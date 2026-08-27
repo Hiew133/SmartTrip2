@@ -71,12 +71,14 @@ export function Photo({ src, alt, className = '', children, style }) {
   );
 }
 
-/* Pill segmented control. options: [{ label, active, onClick, style }] */
+/* Pill segmented control. options: [{ key?, label, active, onClick, style }]
+   Pass `key` whenever labels can repeat — two members called "Minh" would
+   otherwise collide into a single React child. */
 export function Seg({ options, style, ariaLabel }) {
   return (
     <span className="st-seg" style={style} role="group" aria-label={ariaLabel}>
       {options.map((o) => (
-        <button key={o.label} type="button" className={o.active ? 'active' : ''}
+        <button key={o.key ?? o.label} type="button" className={o.active ? 'active' : ''}
           aria-pressed={o.active} style={o.style} onClick={o.onClick}>
           {o.label}
         </button>

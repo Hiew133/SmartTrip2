@@ -1,11 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../store.jsx';
+import { SEED_TRIPS, fmt, newTrip, parseISO, uid } from '../data.js';
 import { ArrowRight, Compass, Seg } from '../components/ui.jsx';
 
 const STYLE_CHIPS = ['Ẩm thực', 'Biển đảo', 'Văn hoá', 'Nghỉ dưỡng', 'Chụp ảnh', 'Khám phá đêm'];
+const PARTY_SIZE = { 'Một mình': 1, 'Cặp đôi': 2, 'Nhóm bạn': 4, 'Gia đình': 4 };
+
+const parseAmount = (raw) => parseInt(String(raw ?? '').replace(/[^\d]/g, ''), 10) || 0;
+
+const addDays = (iso, n) => {
+  const d = parseISO(iso);
+  if (!d) return null;
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 /* The wait shows the shape of the answer forming, not a spinning circle. */
-function DraftSkeleton() {
+function DraftSkeleton({ days }) {
   return (
     <div style={{ marginTop: 34 }} aria-live="polite" aria-busy="true">
       <div className="st-metarow" style={{ marginBottom: 20 }}>
@@ -15,10 +26,10 @@ function DraftSkeleton() {
       </div>
       <div className="st-aicard">
         <div className="st-aidays">
-          {[5, 3, 4, 3].map((rows, d) => (
+          {Array.from({ length: days }, (_, d) => (
             <div key={d} className="st-aiday">
               <span className="st-skel" style={{ display: 'block', width: '68%', height: 17, marginBottom: 15 }} />
-              {Array.from({ length: rows }, (_, r) => (
+              {Array.from({ length: 3 + (d % 3) }, (_, r) => (
                 <div key={r} className="st-aistop" style={{ marginBottom: 11 }}>
                   <span className="st-skel" style={{ width: 34, height: 11, flex: 'none' }} />
                   <span className="st-skel" style={{ width: `${58 + ((d + r) % 4) * 10}%`, height: 11 }} />
@@ -40,10 +51,41 @@ export default function AIDesk() {
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  /* Still a mock — but it now returns exactly the number of days that was
+     asked for, and every figure below is computed from what it returns
+     instead of being a number typed into the markup. */
+  const draftDays = useMemo(() => {
+    const source = SEED_TRIPS[0].days;
+    return Array.from({ length: state.aiDaysN }, (_, i) => {
+      const d = source[i % source.length];
+      return { ...d, id: uid('day'), items: d.items.map((s) => ({ ...s, id: uid('stop') })) };
+    });
+  }, [state.aiDaysN]);
+
+  const party = PARTY_SIZE[state.aiParty] ?? 1;
+  const draftTotal = draftDays.reduce((s, d) => s + d.items.reduce((x, i) => x + i.cost, 0), 0);
+  const budgetTotal = parseAmount(state.aiBudget) * party;
+  const slack = budgetTotal > 0 ? Math.round(((budgetTotal - draftTotal) / budgetTotal) * 100) : null;
+
   const generate = () => {
     patch({ aiPhase: 'loading' });
     clearTimeout(timer.current);
     timer.current = setTimeout(() => patch({ aiPhase: 'result' }), 1700);
+  };
+
+  const useDraft = () => {
+    const trip = newTrip({
+      title: state.aiDest.split(',')[0].trim() || 'Chuyến đi mới',
+      seed: SEED_TRIPS[0].seed,
+      alt: 'Ảnh bìa chuyến đi do AI soạn',
+      body: `Bản nháp AI · ${state.aiParty} · nhịp ${state.aiPace.toLowerCase()}.`,
+      startDate: state.aiDate || null,
+      endDate: addDays(state.aiDate, state.aiDaysN - 1),
+      plan: budgetTotal,
+      days: draftDays,
+    });
+    patch((s) => ({ trips: [...s.trips, trip] }));
+    go('trip', { activeTripId: trip.id, tripTab: 'itin', day: 0, focusIdx: -1, mDay: 0, mFocus: -1, aiPhase: 'form' });
   };
 
   return (
@@ -82,7 +124,7 @@ export default function AIDesk() {
           </div>
           <div className="field">
             <label>Đi cùng</label>
-            <Seg ariaLabel="Đi cùng ai" options={['Một mình', 'Cặp đôi', 'Nhóm bạn', 'Gia đình'].map((p) => ({
+            <Seg ariaLabel="Đi cùng ai" options={Object.keys(PARTY_SIZE).map((p) => ({
               label: p, active: state.aiParty === p, onClick: () => patch({ aiParty: p }),
               style: { padding: '7px 13px' },
             }))} />
@@ -118,26 +160,26 @@ export default function AIDesk() {
         </div>
       )}
 
-      {state.aiPhase === 'loading' && <DraftSkeleton />}
+      {state.aiPhase === 'loading' && <DraftSkeleton days={state.aiDaysN} />}
 
       {state.aiPhase === 'result' && (
         <div style={{ marginTop: 34 }} className="st-rise">
           <div className="st-metarow" style={{ marginBottom: 20 }}>
             <span className="tag tag-accent">Bản nháp 1</span>
-            <span className="tag tag-neutral">Đà Nẵng – Hội An</span>
+            <span className="tag tag-neutral">{state.aiDest.split(',')[0].trim()}</span>
             <span className="tag tag-neutral">{state.aiDaysN} ngày · {state.aiParty}</span>
-            <span className="tag tag-accent-2">≈ 3.727.500 ₫/người</span>
+            <span className="tag tag-accent-2">≈ {fmt(draftTotal / party)}/người</span>
           </div>
           <div className="st-aicard">
             <div className="st-aidays st-stagger">
-              {state.days.map((d, i) => (
-                <div key={d.place} className="st-aiday">
+              {draftDays.map((d, i) => (
+                <div key={d.id} className="st-aiday">
                   <h4><span className="st-aiday-n">{i + 1}</span>{d.place}</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                     {d.items.map((it) => (
-                      <div key={it.n} className="st-aistop">
-                        <span className="st-aistop-t">{it.t}</span>
-                        <span className="st-aistop-n">{it.n}</span>
+                      <div key={it.id} className="st-aistop">
+                        <span className="st-aistop-t">{it.time}</span>
+                        <span className="st-aistop-n">{it.name}</span>
                       </div>
                     ))}
                   </div>
@@ -146,12 +188,14 @@ export default function AIDesk() {
             </div>
           </div>
           <p className="text-muted" style={{ fontSize: 13.5, margin: '20px 0 0', maxWidth: '68ch' }}>
-            Ước tính 14.910.000 ₫ cho cả nhóm, còn dư khoảng 7% ngân sách làm dự phòng.
-            Giá vé lấy theo mùa thấp điểm tháng 9.
+            Ước tính {fmt(draftTotal)} cho cả nhóm
+            {slack !== null && (slack >= 0
+              ? `, còn dư khoảng ${slack}% ngân sách làm dự phòng.`
+              : `, vượt ngân sách khoảng ${Math.abs(slack)}%.`)}
+            {slack === null && '.'} Giá vé lấy theo mùa thấp điểm tháng 9.
           </p>
           <div style={{ display: 'flex', gap: 12, marginTop: 22, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary"
-              onClick={() => go('trip', { tripTab: 'itin', day: 0, aiPhase: 'form' })}>
+            <button type="button" className="btn btn-primary" onClick={useDraft}>
               Dùng lịch trình này<ArrowRight width="15" height="15" />
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => patch({ aiPhase: 'form' })}>

@@ -11,6 +11,7 @@
   --color-accent: #c67139;
   --color-accent-2: #7a8a5e;
   --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
+  --color-danger: #a5372a;
 
   --color-neutral-100: #f9f4ed;
   --color-neutral-200: #eee7db;
@@ -599,7 +600,7 @@ textarea.input { min-height: 90px; resize: vertical; }
     color-mix(in srgb, var(--color-accent) 34%, transparent) 92%, transparent);
 }
 .st-stop {
-  position: relative; display: grid; grid-template-columns: 34px 52px 1fr auto;
+  position: relative; display: grid; grid-template-columns: 34px 52px 1fr auto auto;
   gap: 14px; align-items: center; padding: 13px 15px; border-radius: 20px;
   cursor: pointer; background: transparent; text-align: left; border: 1px solid transparent;
   transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out),
@@ -821,6 +822,107 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .st-skip:focus { top: 12px; color: var(--color-bg); }
 
+/* ── editing affordances (multi-trip model) ─────────────────────────── */
+
+/* visible to screen readers only — used for table columns that carry
+   controls rather than data */
+.st-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.st-danger { color: var(--color-danger); }
+.btn-ghost.st-danger:hover { background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+
+/* Inline title fields: read as the heading they replace until you touch them,
+   so the page keeps its typography while staying editable. */
+.st-titlefield {
+  width: 100%; max-width: 100%; font: inherit; color: inherit;
+  letter-spacing: inherit; line-height: inherit;
+  background: transparent; border: 1px solid transparent; border-radius: 12px;
+  padding: 2px 9px; margin-left: -9px;
+  transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+.st-titlefield::placeholder { color: color-mix(in srgb, currentColor 45%, transparent); }
+.st-titlefield:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.st-titlefield:focus {
+  outline: none; background: var(--color-neutral-100); color: var(--color-text);
+  border-color: var(--color-accent-300);
+}
+.st-hero .st-titlefield:hover { background: rgba(255, 255, 255, .16); }
+
+.st-daytitlerow { display: flex; align-items: center; gap: 12px; margin: 28px 0 5px; }
+.st-daytitlerow .st-daytitle { margin: 0; flex: 1; min-width: 0; }
+.st-confirm { display: flex; align-items: center; gap: 2px; }
+
+.st-datefields { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
+.st-datefields .field { margin: 0; }
+.st-datefields .input { min-width: 172px; }
+.st-planfield { max-width: 260px; margin-top: 22px; }
+
+/* one-line status strips: an undo offer, or a nudge that the order no longer
+   matches the times written down */
+.st-undo, .st-hint {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 16px; padding: 9px 9px 9px 16px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 600;
+}
+.st-undo {
+  background: var(--color-neutral-200);
+  color: color-mix(in srgb, var(--color-text) 72%, transparent);
+}
+.st-hint { background: var(--color-accent-100); color: var(--color-accent-800); }
+
+/* row-level actions stay quiet until the row is hovered or focused */
+.st-stop-edit {
+  cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600;
+  padding: 5px 12px; border-radius: 999px; background: transparent;
+  border: 1px solid var(--color-divider); color: var(--color-accent-700);
+  opacity: 0; transition: opacity var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.st-stop:hover .st-stop-edit, .st-stop-edit:focus-visible, .st-stop.active .st-stop-edit { opacity: 1; }
+.st-stop-edit:hover { background: var(--color-accent-100); border-color: var(--color-accent-300); }
+
+.st-stopedit {
+  border-radius: 22px; padding: 18px 20px 14px; margin: 4px 0;
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-accent-200); box-shadow: var(--shadow-sm);
+}
+.st-stopedit-grid { display: grid; grid-template-columns: 118px 1fr 140px; gap: 12px 14px; }
+.st-stopedit-grid label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.st-stopedit-grid label > span { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.st-stopedit-wide { grid-column: 2 / -1; }
+.st-stopedit-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+
+.st-rowacts { text-align: right; white-space: nowrap; }
+.st-linkbtn {
+  cursor: pointer; font: inherit; font-size: 13px; font-weight: 600;
+  background: none; border: 0; padding: 4px 7px; border-radius: 8px;
+  color: var(--color-accent-700);
+  transition: background var(--dur) var(--ease-out);
+}
+.st-linkbtn:hover { background: color-mix(in srgb, var(--color-accent) 13%, transparent); }
+.st-linkbtn.st-danger:hover { background: color-mix(in srgb, var(--color-danger) 13%, transparent); }
+
+/* ── crash screen ───────────────────────────────────────────────────── */
+.st-crash {
+  min-height: 100vh; display: grid; place-items: center; padding: 32px 20px;
+  background: var(--color-bg); color: var(--color-text);
+}
+.st-crash-card {
+  max-width: 60ch; background: var(--color-neutral-100); border-radius: 28px;
+  padding: 38px 36px 30px; border: 1px solid var(--color-accent-200);
+  box-shadow: var(--shadow-md);
+}
+.st-crash-card h1 { margin: 0 0 12px; font-size: 30px; }
+.st-crash-card p { margin: 0 0 16px; font-size: 15px; line-height: 1.55; }
+.st-crash-card pre {
+  margin: 0 0 20px; padding: 12px 15px; border-radius: 14px; overflow-x: auto;
+  font-size: 12.5px; background: var(--color-surface);
+  color: color-mix(in srgb, var(--color-text) 72%, transparent);
+}
+.st-crash-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+
 /* ── responsive ─────────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
   .st-2col { grid-template-columns: 1fr; gap: 30px; }
@@ -848,7 +950,9 @@ textarea.input { min-height: 90px; resize: vertical; }
   .st-trip-feature .st-trip-title { font-size: 27px; }
   .st-aigrid { grid-template-columns: 1fr; }
   .st-hero-body { padding: 26px 22px 22px; }
-  .st-stop { grid-template-columns: 34px 1fr auto; }
+  .st-stop { grid-template-columns: 34px 1fr auto auto; }
+  .st-stopedit-grid { grid-template-columns: 110px 1fr; }
+  .st-stopedit-wide { grid-column: 1 / -1; }
   .st-stop-time { grid-column: 2; font-size: 12.5px; }
   .st-stops::before { left: 28px; }
 }

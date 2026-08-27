@@ -1,5 +1,5 @@
-import { useApp, computeBudget } from '../store.jsx';
-import { fmt, photo } from '../data.js';
+import { useApp, useActiveTrip, computeBudget } from '../store.jsx';
+import { STATUS_LABEL, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
 import { Avatar, ChevronLeft, Photo, Users } from '../components/ui.jsx';
 import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
@@ -12,9 +12,11 @@ const TABS = [
 ];
 
 export default function Trip() {
-  const { state, patch, go } = useApp();
-  const { core, total } = computeBudget(state);
-  const stopCount = state.days.reduce((s, d) => s + d.items.length, 0);
+  const { state, patch, patchTrip, go } = useApp();
+  const trip = useActiveTrip();
+  const { core, total } = computeBudget(trip);
+  const stops = stopCount(trip);
+  const status = tripStatus(trip);
 
   return (
     <div className="st-page" style={{ paddingTop: 24 }}>
@@ -23,21 +25,24 @@ export default function Trip() {
       </button>
 
       <header className="st-hero st-rise">
-        <Photo src={photo('hoian-lanterns', 1800, 800)} alt="Phố cổ Hội An lên đèn bên sông Hoài" />
+        <Photo src={photo(trip.seed, 1800, 800)} alt={trip.alt} />
         <div className="st-hero-body">
           <div>
-            <h1 className="st-hero-title">Đà Nẵng – Hội An</h1>
+            <input className="st-hero-title st-titlefield" value={trip.title}
+              aria-label="Tên chuyến đi" placeholder="Đặt tên cho chuyến đi"
+              onChange={(e) => patchTrip(() => ({ title: e.target.value }))} />
             <div className="st-metarow">
-              <span className="tag tag-accent">12 – 15/09/2026</span>
+              <span className={`tag ${STATUS_LABEL[status].cls}`}>{STATUS_LABEL[status].label}</span>
+              <span className="tag tag-accent">{formatRange(trip.startDate, trip.endDate)}</span>
               <span className="tag">{core.length} thành viên</span>
-              <span className="tag">{stopCount} điểm dừng</span>
+              <span className="tag">{stops} điểm dừng</span>
               <span className="tag">Đã ghi {fmt(total)}</span>
             </div>
           </div>
           <div className="st-hero-actions">
             <div className="st-avatars">
               {core.map((m, i) => (
-                <Avatar key={m.e} initial={m.n[0]} tone={i % 2} ring />
+                <Avatar key={m.id} initial={m.name[0]} tone={i % 2} ring />
               ))}
             </div>
             <button type="button" className="btn btn-secondary" onClick={() => patch({ tripTab: 'members' })}>

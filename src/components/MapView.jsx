@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import { hasCoords } from '../data.js';
 
 /* Warm-paper Leaflet map of one day's stops: dashed terracotta route,
    numbered round pins, focused pin in sage + popup (see organic.css).
    If no tile server is reachable, falls back to a paper-dot background
    with a note — pin positions stay correct. */
-export default function MapView({ stops, focusIdx = -1, zoomControl = true, style }) {
+export default function MapView({ stops = [], focusIdx = -1, zoomControl = true, style }) {
   const elRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
@@ -40,6 +41,7 @@ export default function MapView({ stops, focusIdx = -1, zoomControl = true, styl
 
     return () => {
       timers.forEach(clearTimeout);
+      layerRef.current = null;   // the group dies with the map; don't reuse the handle
       map.remove();
       mapRef.current = null;
     };
@@ -52,12 +54,16 @@ export default function MapView({ stops, focusIdx = -1, zoomControl = true, styl
     const g = L.layerGroup().addTo(map);
     layerRef.current = g;
 
-    const pts = stops.map((s) => [s.lat, s.lng]);
+    /* A stop added by hand has no coordinates yet (no places search on the
+       client), so it is skipped here — but pin numbers stay tied to the
+       stop's real position in the day, not to its position on the map. */
+    const located = stops.map((s, i) => ({ s, i })).filter(({ s }) => hasCoords(s));
+    const pts = located.map(({ s }) => [s.lat, s.lng]);
     if (pts.length > 1) {
       L.polyline(pts, { color: '#c67139', weight: 3, opacity: 0.5, dashArray: '1 9', lineCap: 'round' }).addTo(g);
     }
     let focusMarker = null;
-    stops.forEach((s, i) => {
+    located.forEach(({ s, i }) => {
       const isFocus = i === focusIdx;
       const el = document.createElement('div');
       el.className = 'pin' + (isFocus ? ' focus' : '');
@@ -68,9 +74,9 @@ export default function MapView({ stops, focusIdx = -1, zoomControl = true, styl
       const popup = document.createElement('div');
       const time = document.createElement('div');
       time.className = 't';
-      time.textContent = s.t;
+      time.textContent = s.time;
       const name = document.createElement('b');
-      name.textContent = s.n;
+      name.textContent = s.name;
       popup.append(time, name);
       m.bindPopup(popup);
       if (isFocus) focusMarker = m;
@@ -84,12 +90,19 @@ export default function MapView({ stops, focusIdx = -1, zoomControl = true, styl
     return () => clearTimeout(t);
   }, [stops, focusIdx]);
 
+  const missing = stops.filter((s) => !hasCoords(s)).length;
+
   return (
     <div className={'st-mapwrap' + (noTiles ? ' no-tiles' : '')} style={style}>
       <div ref={elRef} className="st-map" style={{ position: 'absolute', inset: 0 }} />
       {noTiles && (
         <div className="st-map-note">
           Bản đồ nền không tải được — vị trí ghim vẫn chính xác.
+        </div>
+      )}
+      {!noTiles && missing > 0 && (
+        <div className="st-map-note">
+          {missing} điểm dừng chưa có toạ độ nên chưa hiện trên bản đồ.
         </div>
       )}
     </div>

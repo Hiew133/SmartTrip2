@@ -39,7 +39,11 @@ function StatusBar({ time = '9:41' }) {
 export default function IOSDevice({ children, width = 402, height = 874 }) {
   return (
     <div style={{
-      width, height, borderRadius: 48, overflow: 'hidden',
+      /* Narrower than the frame (small phones, split panes) shrinks the whole
+         device instead of pushing the page into a horizontal scroll. */
+      width: `min(${width}px, 100%)`, maxWidth: '100%',
+      aspectRatio: `${width} / ${height}`, maxHeight: height,
+      borderRadius: 48, overflow: 'hidden',
       position: 'relative', background: '#F2F2F7',
       boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
       fontFamily: '-apple-system, system-ui, sans-serif',

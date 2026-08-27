@@ -1,42 +1,63 @@
-import { useRef, useState } from 'react';
-import { useApp } from '../../store.jsx';
+import { useEffect, useRef, useState } from 'react';
+import { useApp, useActiveTrip } from '../../store.jsx';
+import { uid } from '../../data.js';
 import { Avatar, Check, Seg } from '../../components/ui.jsx';
 
-const SHARE_LINK = 'https://smarttrip.vn/t/dnha-0926';
 const ROLE_LABEL = { edit: 'Sửa', view: 'Xem' };
 
 export default function MembersTab() {
-  const { state, patch } = useApp();
+  const { state, patch, patchTrip } = useApp();
+  const trip = useActiveTrip();
   const copyTimer = useRef(null);
+  const linkRef = useRef(null);
   const [inviteErr, setInviteErr] = useState('');
 
-  const setRole = (idx, role) => patch((s) => ({
-    members: s.members.map((m, j) => (j === idx ? { ...m, role } : m)),
+  const shareLink = `https://smarttrip.vn/t/${trip.id}`;
+
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
+
+  const setRole = (id, role) => patchTrip((t) => ({
+    members: t.members.map((m) => (m.id === id ? { ...m, role } : m)),
   }));
 
   const sendInvite = () => {
-    const e = state.inviteEmail.trim();
-    if (!/^\S+@\S+\.\S+$/.test(e)) {
+    const email = state.inviteEmail.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
       setInviteErr('Nhập một địa chỉ email hợp lệ để gửi lời mời.');
       return;
     }
-    if (state.members.some((m) => m.e.toLowerCase() === e.toLowerCase())) {
+    if (trip.members.some((m) => m.email.toLowerCase() === email.toLowerCase())) {
       setInviteErr('Người này đã có trong chuyến đi.');
       return;
     }
     setInviteErr('');
-    const name = e.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    patch((s) => ({
-      members: [...s.members, { n: name, e, role: s.inviteRole, pending: true }],
-      inviteEmail: '',
+    const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    patchTrip((t, s) => ({
+      members: [...t.members, { id: uid('mem'), name, email, role: s.inviteRole, pending: true }],
     }));
+    patch({ inviteEmail: '' });
   };
 
+  /* writeText returns a promise, so the old try/catch never saw a rejection:
+     a blocked clipboard still reported "Đã sao chép". Now the confirmation
+     only appears on a resolved write, and a failure says what to do instead. */
   const doCopy = () => {
-    try { navigator.clipboard.writeText(SHARE_LINK); } catch { /* clipboard unavailable */ }
-    patch({ copied: true });
-    clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => patch({ copied: false }), 2000);
+    const ok = () => {
+      patch({ copied: true, copyErr: '' });
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => patch({ copied: false }), 2000);
+    };
+    const fail = () => {
+      patch({ copied: false, copyErr: 'Trình duyệt không cho sao chép tự động — liên kết đã được bôi đen, bấm Ctrl+C.' });
+      linkRef.current?.select();
+    };
+    try {
+      const p = navigator.clipboard?.writeText(shareLink);
+      if (p && typeof p.then === 'function') p.then(ok, fail);
+      else fail();
+    } catch {
+      fail();
+    }
   };
 
   return (
@@ -48,20 +69,20 @@ export default function MembersTab() {
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }} className="st-stagger">
-        {state.members.map((m, i) => (
-          <div key={m.e} className="st-member">
-            <Avatar initial={m.n[0]} tone={i % 2} size={42} />
+        {trip.members.map((m, i) => (
+          <div key={m.id} className="st-member">
+            <Avatar initial={m.name[0]} tone={i % 2} size={42} />
             <span style={{ minWidth: 0 }}>
-              <span className="st-member-name">{m.n}</span>
-              <span className="st-member-mail">{m.e}</span>
+              <span className="st-member-name">{m.name}</span>
+              <span className="st-member-mail">{m.email}</span>
             </span>
             <span style={{ flex: 1 }} />
             {m.role === 'owner' && <span className="tag tag-accent">Chủ chuyến đi</span>}
             {m.pending && <span className="tag tag-accent-2">Chờ phản hồi</span>}
             {m.role !== 'owner' && !m.pending && (
-              <Seg ariaLabel={`Quyền của ${m.n}`}
+              <Seg ariaLabel={`Quyền của ${m.name}`}
                 options={['edit', 'view'].map((r) => ({
-                  label: ROLE_LABEL[r], active: m.role === r, onClick: () => setRole(i, r),
+                  key: r, label: ROLE_LABEL[r], active: m.role === r, onClick: () => setRole(m.id, r),
                   style: { fontSize: 12, padding: '5px 13px' },
                 }))} />
             )}
@@ -78,7 +99,7 @@ export default function MembersTab() {
             onChange={(e) => { patch({ inviteEmail: e.target.value }); if (inviteErr) setInviteErr(''); }}
             onKeyDown={(e) => e.key === 'Enter' && sendInvite()} />
           <Seg ariaLabel="Quyền của người được mời" options={['edit', 'view'].map((r) => ({
-            label: ROLE_LABEL[r], active: state.inviteRole === r,
+            key: r, label: ROLE_LABEL[r], active: state.inviteRole === r,
             onClick: () => patch({ inviteRole: r }), style: { padding: '7px 16px' },
           }))} />
           <button type="button" className="btn btn-primary" onClick={sendInvite}>Gửi lời mời</button>
@@ -89,12 +110,14 @@ export default function MembersTab() {
       <div className="field" style={{ marginTop: 18 }}>
         <label htmlFor="st-link">Hoặc chia sẻ liên kết<span className="st-en"> · Share link</span></label>
         <div style={{ display: 'flex', gap: 10 }}>
-          <input className="input" id="st-link" readOnly value={SHARE_LINK}
+          <input className="input" id="st-link" ref={linkRef} readOnly value={shareLink}
+            aria-describedby={state.copyErr ? 'st-link-err' : undefined}
             style={{ flex: 1, color: 'color-mix(in srgb, var(--color-text) 66%, transparent)' }} />
           <button type="button" className="btn btn-secondary" onClick={doCopy}>
             {state.copied ? <><Check width="14" height="14" />Đã sao chép</> : 'Sao chép'}
           </button>
         </div>
+        {state.copyErr && <span className="st-error" id="st-link-err">{state.copyErr}</span>}
       </div>
       <p className="st-fineprint">
         Người mở liên kết sẽ vào với quyền Xem. Chủ chuyến đi có thể nâng quyền bất cứ lúc nào.
