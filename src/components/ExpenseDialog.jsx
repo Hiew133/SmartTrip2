@@ -6,7 +6,7 @@ import { Seg } from './ui.jsx';
 const parseAmount = (raw) => parseInt((raw || '').replace(/[^\d]/g, ''), 10) || 0;
 
 export default function ExpenseDialog() {
-  const { state, patch } = useApp();
+  const { state, patch, notify } = useApp();
   const { core } = computeBudget(state);
   const [err, setErr] = useState('');
   const nameRef = useRef(null);
@@ -30,6 +30,7 @@ export default function ExpenseDialog() {
       expenses: [...s.expenses, { n: s.draftName.trim() || 'Khoản chi khác', cat: s.draftCat, p: s.draftPayer, a: amount }],
       showAdd: false, draftName: '', draftAmt: '',
     }));
+    notify('Đã ghi khoản chi và chia đều cho cả nhóm', 'sage');
   };
 
   return (

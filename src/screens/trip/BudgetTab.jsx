@@ -1,12 +1,13 @@
 import { useApp, computeBudget } from '../../store.jsx';
 import { fmt, first, PLAN } from '../../data.js';
-import { Avatar, Check, Plus } from '../../components/ui.jsx';
+import { Avatar, Check, Plus, useCountUp } from '../../components/ui.jsx';
 
 function Stat({ label, value, variant = 'muted' }) {
+  const shown = useCountUp(value);
   return (
     <div className={`st-stat st-stat-${variant}`}>
       <span className="st-stat-label">{label}</span>
-      <span className="st-stat-value">{value}</span>
+      <span className="st-stat-value">{fmt(shown)}</span>
     </div>
   );
 }
@@ -22,11 +23,11 @@ export default function BudgetTab() {
     <div className="st-2col">
       <section aria-label="Các khoản chi">
         <div className="st-stats st-stagger">
-          <Stat label="Kế hoạch" value={fmt(PLAN)} />
-          <Stat label="Đã ghi" value={fmt(total)} variant="accent" />
+          <Stat label="Kế hoạch" value={PLAN} />
+          <Stat label="Đã ghi" value={total} variant="accent" />
           <Stat label={remaining >= 0 ? 'Còn lại' : 'Vượt dự tính'}
-            value={fmt(Math.abs(remaining))} variant={remaining >= 0 ? 'accent2' : 'accent'} />
-          <Stat label={`Mỗi người (${core.length})`} value={fmt(share)} />
+            value={Math.abs(remaining)} variant={remaining >= 0 ? 'accent2' : 'accent'} />
+          <Stat label={`Mỗi người (${core.length})`} value={share} />
         </div>
 
         <div className="st-meter" role="progressbar" aria-valuenow={Math.round(pct)}

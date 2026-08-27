@@ -5,13 +5,12 @@ import Login from './screens/Login.jsx';
 import Trips from './screens/Trips.jsx';
 import Trip from './screens/Trip.jsx';
 import AIDesk from './screens/AIDesk.jsx';
-import Mobile from './screens/Mobile.jsx';
 import ExpenseDialog from './components/ExpenseDialog.jsx';
+import Toast from './components/Toast.jsx';
 
 const NAV = [
   ['Chuyến đi', 'trips', (s) => s === 'trips' || s === 'trip'],
   ['Trợ lý AI', 'ai', (s) => s === 'ai'],
-  ['Bản mobile', 'mobile', (s) => s === 'mobile'],
 ];
 
 function TopBar() {
@@ -61,6 +60,20 @@ export default function App() {
     return () => clearTimeout(t);
   }, [view]);
 
+  /* Reveal-on-scroll: elements tagged .st-reveal slide in once as they enter
+     the viewport. Runs after each view change so new screens get observed. */
+  useEffect(() => {
+    const els = document.querySelectorAll('.st-reveal:not(.in)');
+    if (!els.length || !('IntersectionObserver' in window)) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [view]);
+
   return (
     <div className={`st-app ${settled ? 'st-settled' : ''}`} data-en={state.showEnglish ? 'on' : 'off'}>
       <div className="st-grain" aria-hidden="true" />
@@ -71,9 +84,9 @@ export default function App() {
         {state.screen === 'trips' && <Trips />}
         {state.screen === 'trip' && <Trip />}
         {state.screen === 'ai' && <AIDesk />}
-        {state.screen === 'mobile' && <Mobile />}
       </main>
       {state.showAdd && <ExpenseDialog />}
+      <Toast />
     </div>
   );
 }

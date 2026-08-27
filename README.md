@@ -16,10 +16,9 @@ npm run build    # build production vào dist/
 | Màn hình | Nội dung |
 |---|---|
 | Đăng nhập / Đăng ký | Form auth song ngữ Việt–Nhật/Anh (mock, bấm là vào) |
-| Chuyến đi của tôi | Danh sách chuyến đi dạng card |
+| Chuyến đi của tôi | Danh sách chuyến đi dạng card + tìm kiếm & lọc theo trạng thái |
 | Chi tiết chuyến đi | 3 tab: **Lịch trình & bản đồ**, **Ngân sách & chia tiền**, **Thành viên** |
 | Trợ lý AI | Form soạn lịch trình → loading → bản nháp 4 ngày |
-| Bản mobile | Khung iPhone (iOS 26) với 2 tab Lịch trình / Bản đồ |
 
 ## Ngôn ngữ thiết kế
 
@@ -48,6 +47,8 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
 - **Thành viên & quyền** — Chủ chuyến đi / Sửa / Xem, mời qua email (thêm trạng thái
   "Chờ phản hồi"), chia sẻ liên kết + sao chép.
 - **Phụ đề tiếng Anh** bật/tắt (nút `EN` trên nav) — hỗ trợ khách quốc tế.
+- **Tìm kiếm & lọc chuyến đi** trên màn Chuyến đi (theo từ khoá và trạng thái).
+- **Toast thông báo** khi tối ưu tuyến, ghi khoản chi, sao chép liên kết, gửi lời mời.
 - Dữ liệu chuyến đi (lịch, khoản chi, thành viên) lưu **localStorage**.
 
 ## Cấu trúc

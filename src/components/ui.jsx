@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /* Icons — drawn here rather than pulled from Lucide/Feather so the set reads as
    SmartTrip's own. One stroke weight (2.2) across every glyph. */
@@ -56,8 +56,32 @@ export const Users = (p) => (
     <path d="M16 5.2a3.4 3.4 0 0 1 0 6.6" /><path d="M17.6 14.4A6.4 6.4 0 0 1 21.2 20" />
   </svg>
 );
+export const Search = (p) => (
+  <svg {...ico} {...p}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-3.4-3.4" /></svg>
+);
 
 export const muted = (pct = 55) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
+
+/* Ease a number from 0 up to `target` over `dur` ms (respects reduced motion). */
+export function useCountUp(target, dur = 850) {
+  const [val, setVal] = useState(0);
+  const reduce = typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  useEffect(() => {
+    if (reduce) { setVal(target); return; }
+    let raf;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(target * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, dur, reduce]);
+  return val;
+}
 
 /* Photographic plate. The gradient underlay is the real surface — the image
    layers on top, so a blocked or slow request degrades to a duotone, never a gap. */

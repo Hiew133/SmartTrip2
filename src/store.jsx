@@ -4,7 +4,7 @@ import { SEED_DAYS, SEED_EXPENSES, SEED_MEMBERS } from './data.js';
 const LS_KEY = 'smarttrip-v1';
 
 const defaultState = {
-  screen: 'login',           // login | trips | trip | ai | mobile
+  screen: 'login',           // login | trips | trip | ai
   auth: 'in',                // login screen: in | up
   showEnglish: true,
 
@@ -33,9 +33,6 @@ const defaultState = {
   aiParty: 'Nhóm bạn',
   aiPace: 'Cân bằng',
   aiStyles: { 'Ẩm thực': true, 'Biển đảo': true },
-
-  // mobile companion
-  mTab: 'itin', mDay: 0, mFocus: -1,
 };
 
 // Only durable trip data is persisted; UI state resets each visit.
@@ -64,7 +61,8 @@ export function AppProvider({ children }) {
   const api = useMemo(() => {
     const patch = (p) => setState((s) => ({ ...s, ...(typeof p === 'function' ? p(s) : p) }));
     const go = (screen, extra) => patch({ screen, ...extra });
-    return { patch, go };
+    const notify = (msg, tone = 'accent') => patch({ toast: { msg, tone } });
+    return { patch, go, notify };
   }, []);
 
   return <Ctx.Provider value={{ state, ...api }}>{children}</Ctx.Provider>;

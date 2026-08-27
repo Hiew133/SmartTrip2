@@ -22,7 +22,7 @@ export default function Trip() {
         <ChevronLeft width="15" height="15" />Tất cả chuyến đi
       </button>
 
-      <header className="st-hero st-rise">
+      <header className="st-hero st-rise st-reveal">
         <Photo src={photo('hoian-lanterns', 1800, 800)} alt="Phố cổ Hội An lên đèn bên sông Hoài" />
         <div className="st-hero-body">
           <div>

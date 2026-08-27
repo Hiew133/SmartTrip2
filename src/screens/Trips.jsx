@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useApp } from '../store.jsx';
 import { TRIP_CARDS, photo } from '../data.js';
-import { Compass, Photo, Plus, muted } from '../components/ui.jsx';
+import { Compass, Photo, Plus, Search, muted } from '../components/ui.jsx';
+
+const STATUS = ['Tất cả', 'Sắp tới', 'Nháp', 'Đã đi'];
 
 function TripCard({ trip, featured, onOpen }) {
   return (
-    <article className={`st-trip ${featured ? 'st-trip-feature' : ''}`} role="button" tabIndex={0}
+    <article className={`st-trip ${featured ? 'st-trip-feature' : ''} st-reveal`} role="button" tabIndex={0}
       aria-label={`Mở chuyến đi ${trip.title}`}
       onClick={onOpen} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
       <Photo className="st-trip-media" src={photo(trip.seed, featured ? 1000 : 800, featured ? 900 : 560)}
@@ -32,7 +35,15 @@ function TripCard({ trip, featured, onOpen }) {
 
 export default function Trips() {
   const { go } = useApp();
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('Tất cả');
   const openTrip = () => go('trip', { tripTab: 'itin' });
+
+  const query = q.trim().toLowerCase();
+  const cards = TRIP_CARDS.filter((t) =>
+    (status === 'Tất cả' || t.tag === status) &&
+    (!query || `${t.title} ${t.body} ${t.dates}`.toLowerCase().includes(query))
+  );
 
   return (
     <div className="st-page">
@@ -54,17 +65,32 @@ export default function Trips() {
         </div>
       </header>
 
-      <div className="st-metarow" style={{ margin: '26px 0 30px' }}>
-        <span className="tag tag-accent">Sắp tới · Đà Nẵng – Hội An</span>
-        <span className="tag tag-neutral">37 điểm dừng đã lên lịch</span>
-        <span className="tag tag-neutral">2 chuyến còn mở ngân sách</span>
+      <div className="st-toolbar st-reveal">
+        <label className="st-search">
+          <Search width="16" height="16" />
+          <input className="input" value={q} placeholder="Tìm chuyến đi…" aria-label="Tìm chuyến đi"
+            onChange={(e) => setQ(e.target.value)} />
+        </label>
+        <div className="st-metarow" role="group" aria-label="Lọc theo trạng thái">
+          {STATUS.map((s) => (
+            <button key={s} type="button" className={`st-chip ${status === s ? 'active' : ''}`}
+              aria-pressed={status === s} onClick={() => setStatus(s)}>{s}</button>
+          ))}
+        </div>
       </div>
 
-      <section className="st-trips st-stagger" aria-label="Danh sách chuyến đi">
-        {TRIP_CARDS.map((t, i) => (
-          <TripCard key={t.id} trip={t} featured={i === 0} onOpen={openTrip} />
-        ))}
-      </section>
+      {cards.length === 0 ? (
+        <div className="st-empty" style={{ marginTop: 30 }}>
+          <h4>Không tìm thấy chuyến đi</h4>
+          <p>Thử từ khoá khác hoặc chuyển bộ lọc sang "Tất cả".</p>
+        </div>
+      ) : (
+        <section className="st-trips st-stagger" aria-label="Danh sách chuyến đi" style={{ marginTop: 30 }}>
+          {cards.map((t, i) => (
+            <TripCard key={t.id} trip={t} featured={i === 0} onOpen={openTrip} />
+          ))}
+        </section>
+      )}
     </div>
   );
 }

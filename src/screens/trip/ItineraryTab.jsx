@@ -24,7 +24,7 @@ function optimizeRoute(items) {
 }
 
 export default function ItineraryTab() {
-  const { state, patch } = useApp();
+  const { state, patch, notify } = useApp();
   const [dragIdx, setDragIdx] = useState(-1);
   const [overIdx, setOverIdx] = useState(-1);
 
@@ -54,7 +54,7 @@ export default function ItineraryTab() {
             onClick: () => patch({ day: i, focusIdx: -1 }),
           }))} />
           <button type="button" className="btn btn-ghost" style={{ fontSize: 13 }}
-            onClick={() => setItems(optimizeRoute(day.items))}>
+            onClick={() => { setItems(optimizeRoute(day.items)); notify('Đã tối ưu tuyến đường', 'sage'); }}>
             <Route width="15" height="15" />Tối ưu tuyến đường
           </button>
         </div>

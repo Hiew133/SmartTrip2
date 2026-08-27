@@ -6,7 +6,7 @@ const SHARE_LINK = 'https://smarttrip.vn/t/dnha-0926';
 const ROLE_LABEL = { edit: 'Sửa', view: 'Xem' };
 
 export default function MembersTab() {
-  const { state, patch } = useApp();
+  const { state, patch, notify } = useApp();
   const copyTimer = useRef(null);
   const [inviteErr, setInviteErr] = useState('');
 
@@ -30,11 +30,13 @@ export default function MembersTab() {
       members: [...s.members, { n: name, e, role: s.inviteRole, pending: true }],
       inviteEmail: '',
     }));
+    notify(`Đã gửi lời mời tới ${e}`, 'sage');
   };
 
   const doCopy = () => {
     try { navigator.clipboard.writeText(SHARE_LINK); } catch { /* clipboard unavailable */ }
     patch({ copied: true });
+    notify('Đã sao chép liên kết chia sẻ', 'sage');
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => patch({ copied: false }), 2000);
   };
