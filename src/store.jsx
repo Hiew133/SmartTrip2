@@ -4,7 +4,7 @@ import { CATEGORIES, SEED_TRIPS, first, uid } from './data.js';
 export const LS_KEY = 'smarttrip-v2';
 
 const defaultState = {
-  screen: 'login',           // login | trips | trip | ai | mobile
+  screen: 'login',           // login | trips | trip | ai
   auth: 'in',                // login screen: in | up
   showEnglish: true,
 
@@ -35,8 +35,8 @@ const defaultState = {
   aiPace: 'Cân bằng',
   aiStyles: { 'Ẩm thực': true, 'Biển đảo': true },
 
-  // mobile companion
-  mTab: 'itin', mDay: 0, mFocus: -1,
+  // transient toast — never persisted, safe to lose
+  toast: null,
 };
 
 // Only durable trip data is persisted; UI state resets each visit.
@@ -166,7 +166,8 @@ export function AppProvider({ children }) {
     const patchTrip = (fn) => patch((s) => ({
       trips: s.trips.map((t) => (t.id === s.activeTripId ? { ...t, ...fn(t, s) } : t)),
     }));
-    return { patch, go, patchTrip };
+    const notify = (msg, tone = 'accent') => patch({ toast: { msg, tone } });
+    return { patch, go, patchTrip, notify };
   }, []);
 
   return <Ctx.Provider value={{ state, ...api }}>{children}</Ctx.Provider>;

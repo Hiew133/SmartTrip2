@@ -24,7 +24,7 @@ export default function Trip() {
         <ChevronLeft width="15" height="15" />Tất cả chuyến đi
       </button>
 
-      <header className="st-hero st-rise">
+      <header className="st-hero st-rise st-reveal">
         <Photo src={photo(trip.seed, 1800, 800)} alt={trip.alt} />
         <div className="st-hero-body">
           <div>

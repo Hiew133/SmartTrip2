@@ -2,7 +2,8 @@
    PART 1 — Organic design system (imported from the Claude Design project).
    Tokens and base component classes. Retune here, not at call sites.
    ══════════════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Caprasimo:wght@400&family=Figtree:wght@400;500;600;700;800&display=swap');
+/* Fonts are loaded by the <link> in index.html — an @import here would
+   re-request the same stylesheet and block render a second time. */
 
 :root {
   --color-bg: #f5ead8;
@@ -43,9 +44,9 @@
   --color-accent-2-800: #3d472b;
   --color-accent-2-900: #272e1b;
 
-  --font-heading: "Caprasimo", Georgia, serif;
-  --font-heading-weight: 400;
-  --font-body: "Figtree", system-ui, sans-serif;
+  --font-heading: "Fraunces", Georgia, serif;
+  --font-heading-weight: 540;
+  --font-body: "Nunito Sans", "Segoe UI", system-ui, sans-serif;
 
   --space-1: 4.4px;
   --space-2: 8.8px;
@@ -91,13 +92,15 @@ body {
   font-family: var(--font-body); font-size: 15px; line-height: 1.55; font-weight: 400;
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
+  font-optical-sizing: auto;
 }
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
-  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
+  font-optical-sizing: auto; font-variation-settings: "SOFT" 60, "WONK" 0;
+  line-height: 1.12; letter-spacing: -0.02em; margin: 0 0 var(--space-2);
   text-wrap: balance;
 }
-h1 { font-size: 42px; letter-spacing: -0.03em; }
+h1 { font-size: 42px; letter-spacing: -0.03em; font-variation-settings: "SOFT" 50; }
 h2 { font-size: 32px; letter-spacing: -0.025em; }
 h3 { font-size: 25px; letter-spacing: -0.02em; }
 h4 { font-size: 20px; }
@@ -135,6 +138,8 @@ figcaption {
 .btn svg { display: block; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(1px) scale(.985); }
 .btn-primary {
   background: var(--color-accent); color: var(--color-bg);
   box-shadow: 0 2px 5px color-mix(in srgb, var(--color-accent-900) 22%, transparent);
@@ -303,6 +308,35 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 [data-en="off"] .st-en { display: none !important; }
 
+/* — reveal on scroll (progressive disclosure, additive only) — */
+.st-reveal { opacity: 0; transform: translateY(16px); transition: opacity 520ms var(--ease-out), transform 520ms var(--ease-out); }
+.st-reveal.in { opacity: 1; transform: none; }
+.st-settled .st-reveal { transition: none; }
+@media (prefers-reduced-motion: reduce) { .st-reveal { opacity: 1; transform: none; transition: none; } }
+
+/* — toast — */
+.st-toast {
+  position: fixed; left: 50%; bottom: 26px; z-index: var(--z-dialog);
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  max-width: min(92vw, 460px); padding: 11px 18px 11px 12px;
+  border-radius: 999px; color: var(--color-bg);
+  background: color-mix(in srgb, var(--color-neutral-900) 92%, transparent);
+  box-shadow: var(--shadow-lg);
+  font-size: 13.5px; font-weight: 600; line-height: 1.35;
+  animation: st-toast-in 320ms var(--ease-spring) both;
+}
+.st-toast.leaving { animation: st-toast-out 300ms var(--ease-out) both; }
+.st-toast-icon {
+  width: 27px; height: 27px; flex: none; display: inline-flex;
+  align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--color-accent); color: var(--color-bg);
+}
+.st-toast-sage .st-toast-icon { background: var(--color-accent-2-600); }
+.st-toast-neutral .st-toast-icon { background: var(--color-neutral-500); }
+@keyframes st-toast-in { from { opacity: 0; transform: translateX(-50%) translateY(16px) scale(.96); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
+@keyframes st-toast-out { from { opacity: 1; transform: translateX(-50%) translateY(0); } to { opacity: 0; transform: translateX(-50%) translateY(12px); } }
+
 /* — paper grain: one fixed overlay that breaks the digital flatness — */
 .st-grain {
   position: fixed; inset: 0; z-index: var(--z-grain); pointer-events: none;
@@ -383,6 +417,20 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 /* — section headers — */
 .st-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
+
+/* — trips toolbar: search + status filter — */
+.st-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin: 26px 0 6px; padding: 14px 16px; border-radius: 22px;
+  background: color-mix(in srgb, var(--color-neutral-100) 46%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.st-search { position: relative; display: block; min-width: 240px; flex: 1; max-width: 380px; }
+.st-search > svg {
+  position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+  color: color-mix(in srgb, var(--color-text) 42%, transparent); pointer-events: none;
+}
+.st-search .input { padding-left: 42px; min-height: 40px; }
 .st-eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
@@ -755,29 +803,6 @@ textarea.input { min-height: 90px; resize: vertical; }
 .st-empty h4 { margin: 14px 0 6px; font-size: 20px; }
 .st-empty p { margin: 0 auto 18px; font-size: 14px; max-width: 42ch; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
 
-/* — mobile companion — */
-.st-mobile { display: grid; grid-template-columns: minmax(250px, 350px) auto; gap: 60px; justify-content: center; align-items: start; }
-.st-steps { display: grid; gap: 16px; }
-.st-step { display: flex; gap: 13px; margin: 0; font-size: 14.5px; align-items: flex-start; line-height: 1.5; }
-.st-step-n {
-  width: 27px; height: 27px; flex: none; border-radius: 9px;
-  background: var(--color-accent-2-200); color: var(--color-accent-2-900);
-  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;
-}
-.st-phone-row {
-  display: flex; gap: 12px; align-items: baseline; min-height: 46px; padding: 12px 18px;
-  cursor: pointer; border-radius: 18px; margin: 0 8px; border: 1px solid transparent;
-  text-align: left; background: transparent;
-  transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
-}
-.st-phone-row:hover { background: var(--color-accent-100); border-color: var(--color-accent-200); }
-.st-phone-seg { display: flex; border: 1px solid var(--color-divider); border-radius: 999px; overflow: hidden; margin: 12px 16px 0; }
-.st-phone-seg > button {
-  flex: 1; min-height: 44px; border: none; cursor: pointer; font: inherit; font-weight: 600; font-size: 14px;
-  background: transparent; color: var(--color-text); transition: all var(--dur) var(--ease-out);
-}
-.st-phone-seg > button.active { background: var(--color-accent); color: var(--color-bg); }
-
 /* — Leaflet map, warm paper treatment (from map-organic.html) — */
 .st-mapwrap {
   position: relative; overflow: hidden; background: #f0e2cb;
@@ -790,7 +815,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .st-map-note {
   position: absolute; left: 12px; bottom: 12px; z-index: 800;
-  font: 12px/1.4 "Figtree", system-ui, sans-serif;
+  font: 12px/1.4 "Nunito Sans", system-ui, sans-serif;
   color: rgba(32, 30, 29, .68); background: rgba(245, 234, 216, .93);
   padding: 6px 13px; border-radius: 999px; box-shadow: var(--shadow-sm);
 }
@@ -799,13 +824,13 @@ textarea.input { min-height: 90px; resize: vertical; }
 .st-map .leaflet-tile-pane { filter: saturate(0.5) contrast(0.9) brightness(1.05) sepia(0.14); }
 .st-map .pin {
   width: 28px; height: 28px; border-radius: 50%; background: #c67139; color: #f5ead8;
-  display: grid; place-items: center; font: 700 13px "Figtree", system-ui, sans-serif;
+  display: grid; place-items: center; font: 700 13px "Nunito Sans", system-ui, sans-serif;
   border: 2.5px solid #f5ead8; box-shadow: 0 2px 7px rgba(32, 30, 29, .34); box-sizing: border-box;
   transition: transform 260ms cubic-bezier(.34, 1.4, .64, 1);
 }
 .st-map .pin.focus { background: #7a8a5e; transform: scale(1.3); z-index: 500; }
 .st-map .leaflet-popup-content-wrapper { border-radius: 15px; background: #f5ead8; color: #201e1d; }
-.st-map .leaflet-popup-content { font: 14px/1.45 "Figtree", system-ui, sans-serif; margin: 11px 15px; }
+.st-map .leaflet-popup-content { font: 14px/1.45 "Nunito Sans", system-ui, sans-serif; margin: 11px 15px; }
 .st-map .leaflet-popup-content b { font-weight: 700; }
 .st-map .leaflet-popup-content .t {
   font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #a05423;
@@ -932,7 +957,6 @@ textarea.input { min-height: 90px; resize: vertical; }
   .st-login-form { justify-content: center; padding: 42px 28px 64px; }
   .st-login-quote { left: 28px; right: 28px; bottom: 26px; }
   .st-login-quote blockquote { font-size: 21px; }
-  .st-mobile { grid-template-columns: 1fr; justify-items: center; gap: 34px; }
 }
 @media (max-width: 860px) {
   .st-page { padding: 28px 20px 80px; }

@@ -85,7 +85,7 @@ export default function AIDesk() {
       days: draftDays,
     });
     patch((s) => ({ trips: [...s.trips, trip] }));
-    go('trip', { activeTripId: trip.id, tripTab: 'itin', day: 0, focusIdx: -1, mDay: 0, mFocus: -1, aiPhase: 'form' });
+    go('trip', { activeTripId: trip.id, tripTab: 'itin', day: 0, focusIdx: -1, aiPhase: 'form' });
   };
 
   return (

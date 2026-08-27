@@ -86,7 +86,7 @@ function StopEditor({ stop, onChange, onDone, onRemove }) {
 }
 
 export default function ItineraryTab() {
-  const { state, patch, patchTrip } = useApp();
+  const { state, patch, patchTrip, notify } = useApp();
   const trip = useActiveTrip();
   const [dragIdx, setDragIdx] = useState(-1);
   const [overIdx, setOverIdx] = useState(-1);
@@ -104,11 +104,13 @@ export default function ItineraryTab() {
   }));
 
   /* Every reordering keeps the previous order around for one undo — the old
-     version rewrote the day in place with no way back. */
-  const reorder = (items, label) => {
+     version rewrote the day in place with no way back. Dragging is its own
+     feedback, so only the one-click reorders announce themselves. */
+  const reorder = (items, label, announce = false) => {
     setUndo({ dayId: day.id, items: day.items, label });
     writeItems(day.id, items);
     patch({ focusIdx: -1 });
+    if (announce) notify(`Đã ${label} — giờ của từng điểm dừng giữ nguyên`, 'sage');
   };
 
   const applyUndo = () => {
@@ -185,7 +187,7 @@ export default function ItineraryTab() {
           </button>
           {day && day.items.length > 2 && (
             <button type="button" className="btn btn-ghost" style={{ fontSize: 13 }}
-              onClick={() => reorder(optimizeRoute(day.items), 'tối ưu tuyến đường')}>
+              onClick={() => reorder(optimizeRoute(day.items), 'tối ưu tuyến đường', true)}>
               <Route width="15" height="15" />Tối ưu tuyến đường
             </button>
           )}
@@ -233,7 +235,7 @@ export default function ItineraryTab() {
               <div className="st-hint" role="status">
                 <span>Thứ tự hiện tại không khớp với giờ đã ghi.</span>
                 <button type="button" className="btn btn-ghost"
-                  onClick={() => reorder(byTime(day.items), 'sắp lại theo giờ')}>
+                  onClick={() => reorder(byTime(day.items), 'sắp lại theo giờ', true)}>
                   Sắp lại theo giờ
                 </button>
               </div>

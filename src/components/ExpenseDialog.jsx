@@ -8,7 +8,7 @@ const parseAmount = (raw) => parseInt(String(raw ?? '').replace(/[^\d]/g, ''), 1
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export default function ExpenseDialog() {
-  const { state, patch, patchTrip } = useApp();
+  const { state, patch, patchTrip, notify } = useApp();
   const trip = useActiveTrip();
   const { core } = computeBudget(trip);
   const [err, setErr] = useState('');
@@ -76,6 +76,7 @@ export default function ExpenseDialog() {
       };
     });
     patch({ showAdd: false, editingExpenseId: null, draftName: '', draftAmt: '' });
+    notify(editing ? 'Đã cập nhật khoản chi' : 'Đã ghi khoản chi và chia đều cho cả nhóm', 'sage');
   };
 
   return (

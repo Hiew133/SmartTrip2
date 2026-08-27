@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useApp, useActiveTrip, computeBudget, settleKey, toggleSettled } from '../../store.jsx';
 import { fmt, first } from '../../data.js';
-import { Avatar, Check, Plus } from '../../components/ui.jsx';
+import { Avatar, Check, Plus, useCountUp } from '../../components/ui.jsx';
 
-function Stat({ label, value, variant = 'muted' }) {
+/* `value` counts up from zero; `fallback` replaces it entirely when the number
+   would be meaningless (no budget set yet, nobody to split between). */
+function Stat({ label, value, fallback, variant = 'muted' }) {
+  const shown = useCountUp(Number.isFinite(value) ? value : 0);
   return (
     <div className={`st-stat st-stat-${variant}`}>
       <span className="st-stat-label">{label}</span>
-      <span className="st-stat-value">{value}</span>
+      <span className="st-stat-value">{fallback ?? fmt(shown)}</span>
     </div>
   );
 }
@@ -51,12 +54,13 @@ export default function BudgetTab() {
     <div className="st-2col">
       <section aria-label="Các khoản chi">
         <div className="st-stats st-stagger">
-          <Stat label="Kế hoạch" value={plan > 0 ? fmt(plan) : 'Chưa đặt'} />
-          <Stat label="Đã ghi" value={fmt(total)} variant="accent" />
+          <Stat label="Kế hoạch" value={plan} fallback={plan > 0 ? undefined : 'Chưa đặt'} />
+          <Stat label="Đã ghi" value={total} variant="accent" />
           <Stat label={remaining >= 0 ? 'Còn lại' : 'Vượt dự tính'}
-            value={plan > 0 ? fmt(Math.abs(remaining)) : '—'}
+            value={Math.abs(remaining)} fallback={plan > 0 ? undefined : '—'}
             variant={remaining >= 0 ? 'accent2' : 'accent'} />
-          <Stat label={`Mỗi người (${core.length})`} value={core.length ? fmt(share) : '—'} />
+          <Stat label={`Mỗi người (${core.length})`} value={share}
+            fallback={core.length ? undefined : '—'} />
         </div>
 
         <div className="field st-planfield">

@@ -6,7 +6,7 @@ import { Avatar, Check, Seg } from '../../components/ui.jsx';
 const ROLE_LABEL = { edit: 'Sửa', view: 'Xem' };
 
 export default function MembersTab() {
-  const { state, patch, patchTrip } = useApp();
+  const { state, patch, patchTrip, notify } = useApp();
   const trip = useActiveTrip();
   const copyTimer = useRef(null);
   const linkRef = useRef(null);
@@ -36,6 +36,7 @@ export default function MembersTab() {
       members: [...t.members, { id: uid('mem'), name, email, role: s.inviteRole, pending: true }],
     }));
     patch({ inviteEmail: '' });
+    notify(`Đã gửi lời mời tới ${email}`, 'sage');
   };
 
   /* writeText returns a promise, so the old try/catch never saw a rejection:
@@ -44,6 +45,7 @@ export default function MembersTab() {
   const doCopy = () => {
     const ok = () => {
       patch({ copied: true, copyErr: '' });
+      notify('Đã sao chép liên kết chia sẻ', 'sage');
       clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => patch({ copied: false }), 2000);
     };
