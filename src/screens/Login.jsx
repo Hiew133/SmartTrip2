@@ -1,20 +1,47 @@
 import { useState } from 'react';
 import { useApp } from '../store.jsx';
 import { photo } from '../data.js';
+import {
+  authMessage, firebaseEnabled, missingKeys,
+  signInWithEmail, signInWithGoogle, signUpWithEmail,
+} from '../backend/index.js';
 import { ArrowRight, Pin, Photo } from '../components/ui.jsx';
 
 export default function Login() {
-  const { state, patch, go } = useApp();
+  const { state, patch } = useApp();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
   const isSignup = state.auth === 'up';
   const emailBad = touched && !/^\S+@\S+\.\S+$/.test(email);
+
+  /* No navigation here: the auth listener in the store moves the app to the
+     trip list the moment Firebase reports a signed-in user. */
+  const attempt = async (fn) => {
+    setBusy(true);
+    setErr('');
+    try {
+      await fn();
+    } catch (e) {
+      setErr(authMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = (e) => {
     e.preventDefault();
     setTouched(true);
     if (!/^\S+@\S+\.\S+$/.test(email)) return;
-    go('trips');
+    if (password.length < 6) {
+      setErr('Mật khẩu cần ít nhất 6 ký tự.');
+      return;
+    }
+    attempt(() => (isSignup ? signUpWithEmail(name.trim(), email, password) : signInWithEmail(email, password)));
   };
 
   const hour = new Date().getHours();
@@ -33,11 +60,17 @@ export default function Login() {
             <span className="st-en text-muted"> · Plan together, travel together.</span>
           </p>
 
+          {!firebaseEnabled && (
+            <p className="st-hint" style={{ marginBottom: 20 }}>
+              Chế độ thử: chưa có project Firebase ({missingKeys.join(', ')}), dữ liệu chỉ lưu trong máy.
+            </p>
+          )}
+
           <div className="st-seg" style={{ marginBottom: 22 }} role="group" aria-label="Đăng nhập hoặc đăng ký">
             <button type="button" className={!isSignup ? 'active' : ''} aria-pressed={!isSignup}
-              style={{ padding: '8px 20px' }} onClick={() => patch({ auth: 'in' })}>Đăng nhập</button>
+              style={{ padding: '8px 20px' }} onClick={() => { patch({ auth: 'in' }); setErr(''); }}>Đăng nhập</button>
             <button type="button" className={isSignup ? 'active' : ''} aria-pressed={isSignup}
-              style={{ padding: '8px 20px' }} onClick={() => patch({ auth: 'up' })}>Đăng ký</button>
+              style={{ padding: '8px 20px' }} onClick={() => { patch({ auth: 'up' }); setErr(''); }}>Đăng ký</button>
           </div>
 
           <form onSubmit={submit} noValidate>
@@ -45,7 +78,8 @@ export default function Login() {
               {isSignup && (
                 <div className="field">
                   <label htmlFor="st-name">Họ tên<span className="st-en"> · Full name</span></label>
-                  <input className="input" id="st-name" placeholder="Trần Hoài Minh" autoComplete="name" />
+                  <input className="input" id="st-name" placeholder="Trần Hoài Minh" autoComplete="name"
+                    value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
               )}
               <div className="field">
@@ -63,12 +97,16 @@ export default function Login() {
               <div className="field">
                 <label htmlFor="st-pass">Mật khẩu<span className="st-en"> · Password</span></label>
                 <input className="input" id="st-pass" type="password" placeholder="••••••••"
-                  autoComplete={isSignup ? 'new-password' : 'current-password'} />
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                  value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 20 }}>
-              {isSignup ? 'Tạo tài khoản' : 'Đăng nhập'}<ArrowRight width="15" height="15" />
+            {err && <p className="st-error" role="alert" style={{ marginTop: 12 }}>{err}</p>}
+
+            <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: 20 }} disabled={busy}>
+              {busy ? 'Đang xử lý…' : (isSignup ? 'Tạo tài khoản' : 'Đăng nhập')}
+              {!busy && <ArrowRight width="15" height="15" />}
             </button>
           </form>
 
@@ -78,7 +116,8 @@ export default function Login() {
           </div>
 
           <p className="st-rule">hoặc<span className="st-en">&nbsp;· or</span></p>
-          <button type="button" className="btn btn-secondary btn-block" onClick={() => go('trips')}>
+          <button type="button" className="btn btn-secondary btn-block" disabled={busy}
+            onClick={() => attempt(signInWithGoogle)}>
             Tiếp tục với Google
           </button>
           <p className="st-fineprint">
@@ -88,7 +127,7 @@ export default function Login() {
         </div>
       </section>
 
-      <aside className="st-login-art" aria-hidden="true">
+      <aside className="st-login-art">
         <Photo src={photo('hoian-lanterns', 1400, 1800)}
           alt="Đèn lồng phố cổ Hội An phản chiếu trên sông Hoài" />
         <figure className="st-login-quote">

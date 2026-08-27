@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../store.jsx';
-import { SEED_TRIPS, fmt, newTrip, parseISO, uid } from '../data.js';
+import { fmt, parseISO } from '../data.js';
+import { aiAvailable, generateItinerary } from '../backend/index.js';
 import { ArrowRight, Compass, Seg } from '../components/ui.jsx';
 
 const STYLE_CHIPS = ['Ẩm thực', 'Biển đảo', 'Văn hoá', 'Nghỉ dưỡng', 'Chụp ảnh', 'Khám phá đêm'];
@@ -14,6 +14,8 @@ const addDays = (iso, n) => {
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+const draftTotal = (days) => days.reduce((s, d) => s + d.items.reduce((x, i) => x + i.cost, 0), 0);
 
 /* The wait shows the shape of the answer forming, not a spinning circle. */
 function DraftSkeleton({ days }) {
@@ -47,45 +49,48 @@ function DraftSkeleton({ days }) {
 }
 
 export default function AIDesk() {
-  const { state, patch, go } = useApp();
-  const timer = useRef(null);
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  /* Still a mock — but it now returns exactly the number of days that was
-     asked for, and every figure below is computed from what it returns
-     instead of being a number typed into the markup. */
-  const draftDays = useMemo(() => {
-    const source = SEED_TRIPS[0].days;
-    return Array.from({ length: state.aiDaysN }, (_, i) => {
-      const d = source[i % source.length];
-      return { ...d, id: uid('day'), items: d.items.map((s) => ({ ...s, id: uid('stop') })) };
-    });
-  }, [state.aiDaysN]);
+  const { state, patch, actions } = useApp();
 
   const party = PARTY_SIZE[state.aiParty] ?? 1;
-  const draftTotal = draftDays.reduce((s, d) => s + d.items.reduce((x, i) => x + i.cost, 0), 0);
-  const budgetTotal = parseAmount(state.aiBudget) * party;
-  const slack = budgetTotal > 0 ? Math.round(((budgetTotal - draftTotal) / budgetTotal) * 100) : null;
+  const budgetPerPerson = parseAmount(state.aiBudget);
+  const budgetTotal = budgetPerPerson * party;
+  const draft = state.aiDraft;
+  const total = draft ? draftTotal(draft.days) : 0;
+  const slack = draft && budgetTotal > 0 ? Math.round(((budgetTotal - total) / budgetTotal) * 100) : null;
 
-  const generate = () => {
-    patch({ aiPhase: 'loading' });
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => patch({ aiPhase: 'result' }), 1700);
+  const generate = async () => {
+    patch({ aiPhase: 'loading', aiError: '', aiDraft: null });
+    try {
+      const result = await generateItinerary({
+        dest: state.aiDest,
+        date: state.aiDate,
+        dayCount: state.aiDaysN,
+        party: state.aiParty,
+        partySize: party,
+        pace: state.aiPace,
+        styles: Object.keys(state.aiStyles).filter((k) => state.aiStyles[k]),
+        budgetPerPerson,
+      });
+      patch({ aiDraft: result, aiPhase: 'result' });
+    } catch (err) {
+      console.error('SmartTrip · AI:', err);
+      patch({ aiPhase: 'form', aiError: err?.message || 'Không soạn được lịch trình. Thử lại giúp mình.' });
+    }
   };
 
-  const useDraft = () => {
-    const trip = newTrip({
-      title: state.aiDest.split(',')[0].trim() || 'Chuyến đi mới',
-      seed: SEED_TRIPS[0].seed,
+  const useDraft = async () => {
+    const id = await actions.createTrip({
+      title: draft.title || state.aiDest.split(',')[0].trim() || 'Chuyến đi mới',
+      seed: `ai-${Math.random().toString(36).slice(2, 8)}`,
       alt: 'Ảnh bìa chuyến đi do AI soạn',
-      body: `Bản nháp AI · ${state.aiParty} · nhịp ${state.aiPace.toLowerCase()}.`,
+      body: draft.summary || `Bản nháp AI · ${state.aiParty} · nhịp ${state.aiPace.toLowerCase()}.`,
       startDate: state.aiDate || null,
-      endDate: addDays(state.aiDate, state.aiDaysN - 1),
+      endDate: addDays(state.aiDate, draft.days.length - 1),
       plan: budgetTotal,
-      days: draftDays,
+      days: draft.days,
     });
-    patch((s) => ({ trips: [...s.trips, trip] }));
-    go('trip', { activeTripId: trip.id, tripTab: 'itin', day: 0, focusIdx: -1, aiPhase: 'form' });
+    // a used draft is spent — coming back to the desk should offer a fresh form
+    if (id) patch({ aiPhase: 'form', aiDraft: null });
   };
 
   return (
@@ -97,6 +102,11 @@ export default function AIDesk() {
           Cho SmartTrip biết bạn muốn đi đâu và đi kiểu gì. Bản nháp trả về theo từng ngày,
           xếp vừa ngân sách, kèm giờ giấc và điểm dừng có thật.
         </p>
+        {!aiAvailable && (
+          <p className="st-hint" style={{ marginTop: 18, display: 'inline-flex' }}>
+            Chưa nối Firebase AI Logic — đang trả bản nháp mẫu. Xem README để bật Gemini.
+          </p>
+        )}
       </header>
 
       {state.aiPhase === 'form' && (
@@ -154,25 +164,26 @@ export default function AIDesk() {
               <Compass width="15" height="15" />Soạn lịch trình
             </button>
             <span className="text-muted" style={{ fontSize: 13.5, fontWeight: 600 }}>
-              Bản nháp mất khoảng hai giây · chỉnh tay thoải mái sau đó
+              Bản nháp mất vài giây · chỉnh tay thoải mái sau đó
             </span>
           </div>
+          {state.aiError && <p className="st-error st-full">{state.aiError}</p>}
         </div>
       )}
 
       {state.aiPhase === 'loading' && <DraftSkeleton days={state.aiDaysN} />}
 
-      {state.aiPhase === 'result' && (
+      {state.aiPhase === 'result' && draft && (
         <div style={{ marginTop: 34 }} className="st-rise">
           <div className="st-metarow" style={{ marginBottom: 20 }}>
             <span className="tag tag-accent">Bản nháp 1</span>
-            <span className="tag tag-neutral">{state.aiDest.split(',')[0].trim()}</span>
-            <span className="tag tag-neutral">{state.aiDaysN} ngày · {state.aiParty}</span>
-            <span className="tag tag-accent-2">≈ {fmt(draftTotal / party)}/người</span>
+            <span className="tag tag-neutral">{draft.title}</span>
+            <span className="tag tag-neutral">{draft.days.length} ngày · {state.aiParty}</span>
+            <span className="tag tag-accent-2">≈ {fmt(total / party)}/người</span>
           </div>
           <div className="st-aicard">
             <div className="st-aidays st-stagger">
-              {draftDays.map((d, i) => (
+              {draft.days.map((d, i) => (
                 <div key={d.id} className="st-aiday">
                   <h4><span className="st-aiday-n">{i + 1}</span>{d.place}</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -188,17 +199,22 @@ export default function AIDesk() {
             </div>
           </div>
           <p className="text-muted" style={{ fontSize: 13.5, margin: '20px 0 0', maxWidth: '68ch' }}>
-            Ước tính {fmt(draftTotal)} cho cả nhóm
+            {draft.summary && `${draft.summary} `}
+            Ước tính {fmt(total)} cho cả nhóm
             {slack !== null && (slack >= 0
               ? `, còn dư khoảng ${slack}% ngân sách làm dự phòng.`
               : `, vượt ngân sách khoảng ${Math.abs(slack)}%.`)}
-            {slack === null && '.'} Giá vé lấy theo mùa thấp điểm tháng 9.
+            {slack === null && '.'}
+          </p>
+          <p className="st-fineprint" style={{ maxWidth: '68ch' }}>
+            Giá và toạ độ do mô hình ước tính — kiểm tra lại trước khi đặt chỗ.
           </p>
           <div style={{ display: 'flex', gap: 12, marginTop: 22, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" onClick={useDraft}>
               Dùng lịch trình này<ArrowRight width="15" height="15" />
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => patch({ aiPhase: 'form' })}>
+            <button type="button" className="btn btn-secondary"
+              onClick={() => patch({ aiPhase: 'form', aiDraft: null })}>
               Soạn lại
             </button>
           </div>

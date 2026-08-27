@@ -15,7 +15,7 @@ npm run build    # build production vào dist/
 
 | Màn hình | Nội dung |
 |---|---|
-| Đăng nhập / Đăng ký | Form auth tiếng Việt kèm phụ đề tiếng Anh (mock, bấm là vào) |
+| Đăng nhập / Đăng ký | Firebase Auth: Google + Email/Password (chế độ thử khi chưa nối Firebase) |
 | Chuyến đi của tôi | Danh sách chuyến đi dạng card, tìm kiếm & lọc theo trạng thái, tạo chuyến trống |
 | Chi tiết chuyến đi | 3 tab: **Lịch trình & bản đồ**, **Ngân sách & chia tiền**, **Thành viên** |
 | Trợ lý AI | Form soạn lịch trình → loading → bản nháp đúng số ngày đã chọn |
@@ -55,8 +55,75 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
 - **Phụ đề tiếng Anh** bật/tắt (nút `EN` trên nav) — hỗ trợ khách quốc tế.
 - **Tìm kiếm & lọc chuyến đi** trên màn Chuyến đi (theo từ khoá và trạng thái).
 - **Toast thông báo** khi tối ưu tuyến, ghi khoản chi, sao chép liên kết, gửi lời mời.
-- Dữ liệu chuyến đi lưu **localStorage** (`smarttrip-v2`), có kiểm tra và vá lại shape khi đọc
-  nên dữ liệu hỏng không làm sập app.
+- **Đăng nhập thật** bằng Firebase Auth (Google, Email/Password); mỗi người chỉ thấy chuyến đi
+  mình là thành viên.
+- **Đồng bộ realtime** qua Firestore — người khác sửa lịch trình hay thêm khoản chi thì màn hình
+  của bạn tự cập nhật, không cần tải lại.
+- **Trợ lý AI thật** bằng Firebase AI Logic (Gemini) với structured output, tạo được chuyến đi
+  mới thẳng từ bản nháp.
+- Mọi thứ đọc từ backend đều đi qua bộ kiểm tra shape, nên dữ liệu hỏng không làm sập app;
+  khi chưa nối Firebase thì dùng localStorage (`smarttrip-v2`).
+
+## Nối Firebase
+
+App chạy được ngay không cần Firebase: khi thiếu cấu hình nó vào **chế độ thử**, dùng
+tài khoản giả và lưu dữ liệu trong localStorage. Nối Firebase để có đăng nhập thật,
+đồng bộ realtime giữa các thành viên, và Trợ lý AI gọi Gemini thật.
+
+### 1. Tạo project
+
+1. [Firebase Console](https://console.firebase.google.com) → **Add project**.
+2. **Build → Authentication → Get started**, bật hai phương thức:
+   **Email/Password** và **Google**.
+3. **Build → Firestore Database → Create database** (chọn region gần, ví dụ `asia-southeast1`).
+4. **Project settings → Your apps → Web** → đăng ký app, copy đoạn `firebaseConfig`.
+
+### 2. Điền cấu hình
+
+```bash
+cp .env.example .env.local
+```
+
+Điền các giá trị từ `firebaseConfig` vào `.env.local`, rồi chạy lại `npm run dev`.
+Màn đăng nhập sẽ hết dòng "Chế độ thử".
+
+Đây là cấu hình công khai của client, không phải khoá bí mật — Firestore được bảo vệ
+bằng Security Rules chứ không phải bằng việc giấu config.
+
+### 3. Nạp Security Rules
+
+```bash
+npx firebase deploy --only firestore:rules
+```
+
+Rules nằm trong [`firestore.rules`](firestore.rules). Cơ chế: quyền đọc/ghi tra từ hai
+trường `memberIds` và `roles` được nhân bản sẵn trên document chuyến đi, nên rule không
+phải đọc thêm document nào. Đổi lại, người có quyền Sửa bị cấm sờ vào chính hai trường
+đó — chỉ chủ chuyến đi mới đổi được quyền.
+
+Có sẵn bộ test chạy trên emulator:
+
+```bash
+npm run test:rules
+```
+
+### 4. Bật Firebase AI Logic (Trợ lý AI)
+
+**Build → AI Logic → Get started**, chọn backend **Gemini Developer API**. Firebase sẽ
+tự bật API và tạo khoá phía server — client không giữ khoá Gemini nào.
+
+Model mặc định là `gemini-3.5-flash`, đổi bằng `VITE_GEMINI_MODEL` trong `.env.local`.
+
+Trợ lý dùng **structured output**: schema JSON được gửi kèm request nên câu trả lời về
+đúng khuôn, không phải bóc tách chuỗi. Mọi thứ model trả về vẫn đi qua đúng bộ lọc
+`cleanStop` như dữ liệu đọc từ Firestore trước khi được đưa vào mô hình chuyến đi.
+
+### 5. Deploy (tuỳ chọn)
+
+```bash
+npm run build
+npx firebase deploy --only hosting
+```
 
 ## Mô hình dữ liệu
 
@@ -64,13 +131,22 @@ Mọi thực thể đều có `id` ổn định; khoản chi trỏ tới ngườ
 chỉ số mảng, nên xoá hoặc sắp xếp lại thành viên không bao giờ gán nhầm tiền cho người khác.
 
 ```
-trip { id, title, seed, alt, body, startDate, endDate, plan, days[], expenses[], members[], settled{} }
-  day     { id, place, seed, items[] }
-  stop    { id, time, name, note, cost, lat, lng }     // lat/lng có thể null
-  member  { id, name, email, role, pending }           // role: owner | edit | view
-  expense { id, name, cat, payerId, amount }
-  settled { "<fromId>><toId>:<số tiền>": true }        // khoá kèm số tiền: khoản chi đổi ⇒ dấu "đã trả" hết hiệu lực
+trips/{tripId}
+  title, seed, alt, body, startDate, endDate, plan, settled{}, ownerId, createdAt
+  members[]  { id, name, email, role, pending, uid }   // role: owner | edit | view
+  memberIds[]  roles{}                                 // nhân bản từ members, dành cho Security Rules
+trips/{tripId}/days/{dayId}
+  place, seed, order, items[] { id, time, name, note, cost, lat, lng }   // lat/lng có thể null
+trips/{tripId}/expenses/{expenseId}
+  name, cat, payerId, amount, createdAt
+
+settled { "<fromId>><toId>:<số tiền>": true }   // khoá kèm số tiền: khoản chi đổi ⇒ dấu "đã trả" hết hiệu lực
 ```
+
+Điểm dừng nằm **trong** document ngày chứ không phải subcollection riêng: mọi thao tác sửa
+điểm dừng (kéo-thả, tối ưu tuyến) đều ghi lại cả ngày, nên tách ra sẽ biến một lần ghi thành
+N lần. Ngược lại khoản chi có document riêng vì đó mới là chỗ nhiều người cùng thêm một lúc,
+và ghi theo từng document thì họ không đè lên nhau.
 
 Những con số như số điểm dừng, tổng chi, trạng thái chuyến (Nháp / Sắp tới / Đã đi),
 "khởi hành sau N ngày" đều **tính từ dữ liệu**, không lưu sẵn, nên không bao giờ lệch.
@@ -81,23 +157,44 @@ Những con số như số điểm dừng, tổng chi, trạng thái chuyến (N
 src/
   organic.css          # design system "Organic" (token + component classes)
   data.js              # seed 3 chuyến + helper ngày tháng, tiền tệ, factory
-  store.jsx            # AppProvider (state + persist + validate), computeBudget, settleKey
+  store.jsx            # AppProvider (session + state + actions), computeBudget, settleKey
   App.jsx              # nav + điều hướng màn hình
-  components/          # ui.jsx (Seg, Avatar, icons), MapView, IOSDevice, ExpenseDialog, ErrorBoundary
-  screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab), AIDesk, Mobile
+  backend/
+    config.js          # đọc biến môi trường, cờ firebaseEnabled
+    firebase.js        # khởi tạo app/auth/db/ai (lazy)
+    auth.js            # đăng nhập/đăng ký/đăng xuất + thông báo lỗi tiếng Việt
+    schema.js          # kiểm tra và vá shape mọi dữ liệu đọc từ ngoài vào
+    firestore.js       # repository chạy trên Firestore
+    local.js           # repository chạy trên localStorage (chế độ thử)
+    ai.js              # sinh lịch trình bằng Firebase AI Logic (hoặc mock)
+    index.js           # chọn repository theo cấu hình
+  components/          # ui.jsx (Seg, Avatar, icons), MapView, ExpenseDialog, ErrorBoundary, useFieldDraft
+  screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab), AIDesk
+tests/
+  firestore-rules.test.mjs   # kiểm thử Security Rules trên emulator
+firestore.rules        # ai đọc được gì, ai ghi được gì
+firebase.json          # rules, hosting, cổng emulator
 ```
+
+`screens/` không bao giờ gọi thẳng Firestore. Nó gọi `actions` trên store, store gọi
+repository, và repository có hai bản cài đặt cùng một giao diện — Firestore hoặc localStorage.
+Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao diện.
 
 ## Bước tiếp theo (theo spec)
 
-1. **Firebase**: Auth (Google/Email), Firestore theo mô hình `trips/{tripId}/days/{dayId}/stops`,
-   realtime listeners cho cộng tác nhóm, Security Rules theo `memberIds`.
-2. **Tìm kiếm địa điểm**: Google Places hoặc **Goong API** để điểm dừng thêm tay có toạ độ thật.
-3. **Directions API** (Google/Goong) thay cho tối ưu nearest-neighbour hiện tại.
-4. **Gemini/Claude API** cho Trợ lý AI sinh lịch trình thật thay vì bản nháp mock.
+1. ~~Firebase Auth + Firestore + Security Rules~~ — xong, xem mục **Nối Firebase**.
+2. ~~Gemini cho Trợ lý AI~~ — xong, qua Firebase AI Logic.
+3. **Tìm kiếm địa điểm**: Google Places hoặc **Goong API** để điểm dừng thêm tay có toạ độ thật.
+4. **Directions API** (Google/Goong) thay cho tối ưu nearest-neighbour hiện tại.
 5. Xuất PDF, i18n đầy đủ, app Flutter đồng bộ Firebase.
 
 ## Còn nợ
 
+- **Lời mời mới chỉ ghi vào chuyến đi**, chưa gửi email và người được mời chưa tự nhận được
+  quyền khi đăng nhập. Cần một Cloud Function đối chiếu email với tài khoản rồi điền `uid`
+  vào chỗ ngồi tương ứng — chừng nào chưa có thì họ vẫn chưa đọc được chuyến đi.
+- Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app hiện chưa có router.
+- Chưa có xoá thành viên và chưa có luồng huỷ lời mời.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, và chưa có cách sắp xếp bằng bàn phím.
-- Chưa có xoá thành viên và chưa có luồng chấp nhận/huỷ lời mời đang "Chờ phản hồi".
-- Chưa có test, lint hay CI.
+- Chưa bật App Check — nên bật trước khi mở cho người ngoài dùng.
+- Ngoài bộ test Security Rules thì chưa có test nào khác, cũng chưa có lint hay CI.

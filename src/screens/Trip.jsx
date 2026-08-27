@@ -1,6 +1,7 @@
-import { useApp, useActiveTrip, computeBudget } from '../store.jsx';
+import { useApp, useActiveTrip, useTripRole, canEdit, computeBudget } from '../store.jsx';
 import { STATUS_LABEL, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
 import { Avatar, ChevronLeft, Photo, Users } from '../components/ui.jsx';
+import { useFieldDraft } from '../components/useFieldDraft.js';
 import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
 import MembersTab from './trip/MembersTab.jsx';
@@ -12,8 +13,26 @@ const TABS = [
 ];
 
 export default function Trip() {
-  const { state, patch, patchTrip, go } = useApp();
+  const { state, patch, go, actions } = useApp();
   const trip = useActiveTrip();
+  const role = useTripRole(trip);
+  const editable = canEdit(role);
+  const title = useFieldDraft(trip?.title, (v) => actions.updateTrip({ title: v }));
+
+  if (!trip) {
+    return (
+      <div className="st-page" style={{ paddingTop: 24 }}>
+        <div className="st-empty">
+          <h4>Chưa chọn chuyến đi</h4>
+          <p>Quay lại danh sách để mở một chuyến đi.</p>
+          <button type="button" className="btn btn-primary" onClick={() => go('trips')}>
+            Tất cả chuyến đi
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const { core, total } = computeBudget(trip);
   const stops = stopCount(trip);
   const status = tripStatus(trip);
@@ -28,15 +47,19 @@ export default function Trip() {
         <Photo src={photo(trip.seed, 1800, 800)} alt={trip.alt} />
         <div className="st-hero-body">
           <div>
-            <input className="st-hero-title st-titlefield" value={trip.title}
-              aria-label="Tên chuyến đi" placeholder="Đặt tên cho chuyến đi"
-              onChange={(e) => patchTrip(() => ({ title: e.target.value }))} />
+            {editable ? (
+              <input className="st-hero-title st-titlefield" {...title}
+                aria-label="Tên chuyến đi" placeholder="Đặt tên cho chuyến đi" />
+            ) : (
+              <h1 className="st-hero-title">{trip.title}</h1>
+            )}
             <div className="st-metarow">
               <span className={`tag ${STATUS_LABEL[status].cls}`}>{STATUS_LABEL[status].label}</span>
               <span className="tag tag-accent">{formatRange(trip.startDate, trip.endDate)}</span>
               <span className="tag">{core.length} thành viên</span>
               <span className="tag">{stops} điểm dừng</span>
               <span className="tag">Đã ghi {fmt(total)}</span>
+              {!editable && <span className="tag">Chỉ xem</span>}
             </div>
           </div>
           <div className="st-hero-actions">
@@ -63,9 +86,9 @@ export default function Trip() {
         ))}
       </nav>
 
-      {state.tripTab === 'itin' && <ItineraryTab />}
-      {state.tripTab === 'budget' && <BudgetTab />}
-      {state.tripTab === 'members' && <MembersTab />}
+      {state.tripTab === 'itin' && <ItineraryTab trip={trip} editable={editable} />}
+      {state.tripTab === 'budget' && <BudgetTab trip={trip} editable={editable} />}
+      {state.tripTab === 'members' && <MembersTab trip={trip} role={role} />}
     </div>
   );
 }

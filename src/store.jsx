@@ -1,16 +1,23 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { CATEGORIES, SEED_TRIPS, first, uid } from './data.js';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { CATEGORIES, first, newTrip } from './data.js';
+import { firebaseEnabled, repo, subscribeAuth } from './backend/index.js';
 
-export const LS_KEY = 'smarttrip-v2';
+const PREF_KEY = 'smarttrip-prefs';
 
 const defaultState = {
   screen: 'login',           // login | trips | trip | ai
   auth: 'in',                // login screen: in | up
   showEnglish: true,
 
-  // trip data
-  trips: SEED_TRIPS,
-  activeTripId: SEED_TRIPS[0].id,
+  // session
+  user: null,
+  authReady: false,
+  readyForUid: null,
+  dataError: '',
+
+  // trip data (mirrored from the backend, never edited in place)
+  trips: [],
+  activeTripId: null,
 
   // trip detail
   tripTab: 'itin',           // itin | budget | members
@@ -34,114 +41,19 @@ const defaultState = {
   aiParty: 'Nhóm bạn',
   aiPace: 'Cân bằng',
   aiStyles: { 'Ẩm thực': true, 'Biển đảo': true },
+  aiDraft: null,
+  aiError: '',
 
   // transient toast — never persisted, safe to lose
   toast: null,
 };
 
-// Only durable trip data is persisted; UI state resets each visit.
-const PERSISTED = ['trips', 'activeTripId', 'showEnglish'];
-
-/* ── persisted-shape validation ──────────────────────────────────────────
-   Anything read back from localStorage is treated as untrusted: a payload
-   written by an older build, a half-finished write, or a hand-edited entry
-   used to take the whole app down with no way back (the bad value was still
-   there on the next reload). Every field is coerced to something the UI can
-   render, and a trip that cannot be repaired is dropped rather than crashed on. */
-
-const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-const arr = (v) => (Array.isArray(v) ? v : []);
-const str = (v, fb = '') => (typeof v === 'string' ? v : fb);
-const num = (v, fb = 0) => (Number.isFinite(Number(v)) ? Number(v) : fb);
-const coord = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
-const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-
-function cleanStop(raw) {
-  if (!isObj(raw)) return null;
-  return {
-    id: str(raw.id) || uid('stop'),
-    time: /^\d{1,2}:\d{2}$/.test(raw.time) ? raw.time : '--:--',
-    name: str(raw.name, 'Điểm dừng'),
-    note: str(raw.note, ''),
-    cost: Math.max(0, num(raw.cost, 0)),
-    lat: coord(raw.lat),
-    lng: coord(raw.lng),
-  };
-}
-
-function cleanDay(raw) {
-  if (!isObj(raw)) return null;
-  return {
-    id: str(raw.id) || uid('day'),
-    place: str(raw.place, ''),
-    seed: str(raw.seed, ''),
-    items: arr(raw.items).map(cleanStop).filter(Boolean),
-  };
-}
-
-function cleanMember(raw) {
-  if (!isObj(raw)) return null;
-  const email = str(raw.email);
-  if (!email) return null;
-  return {
-    id: str(raw.id) || uid('mem'),
-    name: str(raw.name) || email.split('@')[0],
-    email,
-    role: ['owner', 'edit', 'view'].includes(raw.role) ? raw.role : 'view',
-    pending: raw.pending === true,
-  };
-}
-
-function cleanTrip(raw) {
-  if (!isObj(raw)) return null;
-  const members = arr(raw.members).map(cleanMember).filter(Boolean);
-  if (!members.length) return null;          // no members ⇒ no way to split money
-  if (!members.some((m) => m.role === 'owner')) members[0].role = 'owner';
-
-  const ids = new Set(members.map((m) => m.id));
-  const fallbackPayer = members.find((m) => !m.pending)?.id ?? members[0].id;
-  const expenses = arr(raw.expenses)
-    .filter(isObj)
-    .map((e) => ({
-      id: str(e.id) || uid('exp'),
-      name: str(e.name, 'Khoản chi'),
-      cat: CATEGORIES.includes(e.cat) ? e.cat : CATEGORIES[CATEGORIES.length - 1],
-      // an orphaned payer would silently vanish from the balances, so re-home it
-      payerId: ids.has(e.payerId) ? e.payerId : fallbackPayer,
-      amount: Math.max(0, num(e.amount, 0)),
-    }));
-
-  const settled = isObj(raw.settled)
-    ? Object.fromEntries(Object.entries(raw.settled).filter(([, v]) => v === true))
-    : {};
-
-  return {
-    id: str(raw.id) || uid('trip'),
-    title: str(raw.title, 'Chuyến đi'),
-    seed: str(raw.seed) || `trip-${Math.random().toString(36).slice(2, 8)}`,
-    alt: str(raw.alt, 'Ảnh bìa chuyến đi'),
-    body: str(raw.body, ''),
-    startDate: iso(raw.startDate),
-    endDate: iso(raw.endDate),
-    plan: Math.max(0, num(raw.plan, 0)),
-    days: arr(raw.days).map(cleanDay).filter(Boolean),
-    expenses,
-    members,
-    settled,
-  };
-}
-
-function loadPersisted() {
+/* Trip data lives in the backend now; localStorage only keeps the one thing
+   that is a per-device preference rather than shared trip content. */
+function loadPrefs() {
   try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY));
-    if (!isObj(raw)) return {};
-    const trips = arr(raw.trips).map(cleanTrip).filter(Boolean);
-    if (!trips.length) return {};            // nothing usable ⇒ fall back to the seed
-    return {
-      trips,
-      activeTripId: trips.some((t) => t.id === raw.activeTripId) ? raw.activeTripId : trips[0].id,
-      showEnglish: typeof raw.showEnglish === 'boolean' ? raw.showEnglish : defaultState.showEnglish,
-    };
+    const raw = JSON.parse(localStorage.getItem(PREF_KEY));
+    return typeof raw?.showEnglish === 'boolean' ? { showEnglish: raw.showEnglish } : {};
   } catch {
     return {};
   }
@@ -150,24 +62,114 @@ function loadPersisted() {
 const Ctx = createContext(null);
 
 export function AppProvider({ children }) {
-  const [state, setState] = useState(() => ({ ...defaultState, ...loadPersisted() }));
+  const [state, setState] = useState(() => ({ ...defaultState, ...loadPrefs() }));
+  /* Actions are created once and need the current state; a ref updated after
+     each commit is the supported way to read it without re-creating them. */
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; });
 
   useEffect(() => {
-    const out = Object.fromEntries(PERSISTED.map((k) => [k, state[k]]));
-    try { localStorage.setItem(LS_KEY, JSON.stringify(out)); } catch { /* quota/private mode */ }
-    // PERSISTED is the single source of truth for what gets written *and* watched,
-    // so adding a key to it can never leave the effect silently out of date.
-  }, PERSISTED.map((k) => state[k])); // eslint-disable-line react-hooks/exhaustive-deps
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ showEnglish: state.showEnglish })); } catch { /* quota */ }
+  }, [state.showEnglish]);
+
+  /* ── session ─────────────────────────────────────────────────────────── */
+  useEffect(() => subscribeAuth((user) => setState((s) => ({
+    ...s,
+    user,
+    authReady: true,
+    // land on the trip list after signing in, and back on login after signing out
+    screen: user ? (s.screen === 'login' ? 'trips' : s.screen) : 'login',
+    ...(user ? {} : { trips: [], activeTripId: null, readyForUid: null }),
+  }))), []);
+
+  /* ── live trip data ──────────────────────────────────────────────────── */
+  const uidKey = state.user?.uid ?? null;
+  useEffect(() => {
+    if (!uidKey) return undefined;
+    return repo.subscribeTrips(
+      stateRef.current.user,
+      (trips) => setState((s) => ({
+        ...s,
+        trips,
+        readyForUid: uidKey,
+        dataError: '',
+        // the open trip can be deleted by someone else mid-session
+        activeTripId: trips.some((t) => t.id === s.activeTripId) ? s.activeTripId : (trips[0]?.id ?? null),
+      })),
+      (err) => setState((s) => ({
+        ...s,
+        readyForUid: uidKey,
+        dataError: err?.code === 'permission-denied'
+          ? 'Không đọc được dữ liệu — kiểm tra Security Rules của Firestore.'
+          : 'Không tải được dữ liệu chuyến đi. Kiểm tra kết nối rồi tải lại trang.',
+      })),
+    );
+  }, [uidKey]);
 
   const api = useMemo(() => {
     const patch = (p) => setState((s) => ({ ...s, ...(typeof p === 'function' ? p(s) : p) }));
     const go = (screen, extra) => patch({ screen, ...extra });
-    /** Update the open trip. `fn(trip, state)` returns the fields to merge. */
-    const patchTrip = (fn) => patch((s) => ({
-      trips: s.trips.map((t) => (t.id === s.activeTripId ? { ...t, ...fn(t, s) } : t)),
-    }));
     const notify = (msg, tone = 'accent') => patch({ toast: { msg, tone } });
-    return { patch, go, patchTrip, notify };
+
+    const current = () => {
+      const s = stateRef.current;
+      return s.trips.find((t) => t.id === s.activeTripId) ?? null;
+    };
+
+    /* Every write goes through here so one failed round-trip cannot leave the
+       person staring at a UI that silently did nothing. */
+    const run = async (label, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`SmartTrip · ${label}:`, err);
+        notify(err?.code === 'permission-denied'
+          ? 'Bạn chỉ có quyền Xem trong chuyến đi này.'
+          : `Không lưu được: ${label}. Thử lại giúp mình.`, 'neutral');
+        return null;
+      }
+    };
+
+    const onTrip = (label, fn) => {
+      const trip = current();
+      if (!trip) return Promise.resolve(null);
+      return run(label, () => fn(trip.id, trip));
+    };
+
+    const actions = {
+      createTrip: async (over = {}, { open = true } = {}) => {
+        const s = stateRef.current;
+        if (!s.user) return null;
+        const base = newTrip({ ownerId: s.user.uid, createdAt: Date.now(), ...over });
+        /* Whoever creates the trip owns it. The owner seat keeps its id so any
+           expenses copied in alongside it still point at a real payer; only
+           the identity on that seat is replaced. */
+        const ownerIdx = Math.max(0, base.members.findIndex((m) => m.role === 'owner'));
+        base.members = base.members.map((m, i) => (i === ownerIdx
+          ? { ...m, role: 'owner', pending: false, uid: s.user.uid, name: s.user.name || m.name, email: s.user.email || m.email }
+          : { ...m, uid: null }));
+
+        const id = await run('tạo chuyến đi', () => repo.createTrip(s.user, base));
+        if (id && open) go('trip', { activeTripId: id, tripTab: 'itin', day: 0, focusIdx: -1 });
+        return id;
+      },
+      updateTrip: (fields) => onTrip('cập nhật chuyến đi', (id) => repo.updateTrip(id, fields)),
+      deleteTrip: () => onTrip('xoá chuyến đi', (id) => repo.deleteTrip(id)),
+
+      addDay: (day) => onTrip('thêm ngày', (id) => repo.addDay(id, day)),
+      updateDay: (dayId, fields) => onTrip('sửa ngày', (id) => repo.updateDay(id, dayId, fields)),
+      removeDay: (dayId) => onTrip('xoá ngày', (id) => repo.removeDay(id, dayId)),
+
+      addExpense: (expense) => onTrip('thêm khoản chi', (id) => repo.addExpense(id, expense)),
+      updateExpense: (expId, fields) => onTrip('sửa khoản chi', (id) => repo.updateExpense(id, expId, fields)),
+      removeExpense: (expId) => onTrip('xoá khoản chi', (id) => repo.removeExpense(id, expId)),
+
+      setSettled: (settled) => onTrip('đánh dấu đã trả', (id) => repo.setSettled(id, settled)),
+      addMember: (member) => onTrip('gửi lời mời', (id) => repo.addMember(id, member)),
+      setMemberRole: (memberId, role) => onTrip('đổi quyền', (id) => repo.setMemberRole(id, memberId, role)),
+    };
+
+    return { patch, go, notify, actions };
   }, []);
 
   return <Ctx.Provider value={{ state, ...api }}>{children}</Ctx.Provider>;
@@ -175,15 +177,35 @@ export function AppProvider({ children }) {
 
 export const useApp = () => useContext(Ctx);
 
-/** The open trip. Never undefined: validation guarantees at least one trip. */
+/** True once the backend has delivered the trip list for the signed-in user.
+ *  Derived rather than stored, so it can never be left true for the wrong uid. */
+export const useTripsReady = () => {
+  const { state } = useApp();
+  return state.readyForUid !== null && state.readyForUid === (state.user?.uid ?? null);
+};
+
+/** The open trip, or null when the account has none yet. */
 export const useActiveTrip = () => {
   const { state } = useApp();
-  return state.trips.find((t) => t.id === state.activeTripId) ?? state.trips[0];
+  return state.trips.find((t) => t.id === state.activeTripId) ?? null;
 };
+
+/** What the signed-in user may do in the open trip. */
+export function useTripRole(trip) {
+  const { state } = useApp();
+  if (!trip || !state.user) return 'view';
+  const me = trip.members.find((m) => m.uid === state.user.uid);
+  // demo mode has no real identities, so it never locks anyone out
+  if (!me) return firebaseEnabled ? 'view' : 'owner';
+  return me.role;
+}
+
+export const canEdit = (role) => role === 'owner' || role === 'edit';
 
 /* Shared derived budget math: balances per core member and the minimal
    settle-up transfer list (greedy largest-debtor → largest-creditor). */
 export function computeBudget(trip) {
+  if (!trip) return { core: [], total: 0, share: 0, bal: [], transfers: [] };
   const core = trip.members.filter((m) => !m.pending);
   const total = trip.expenses.reduce((s, e) => s + e.amount, 0);
   const share = core.length ? total / core.length : 0;

@@ -929,6 +929,16 @@ textarea.input { min-height: 90px; resize: vertical; }
 .st-linkbtn:hover { background: color-mix(in srgb, var(--color-accent) 13%, transparent); }
 .st-linkbtn.st-danger:hover { background: color-mix(in srgb, var(--color-danger) 13%, transparent); }
 
+
+/* app boot: shown only while Firebase Auth reports back */
+.st-boot {
+  min-height: 60vh; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 14px; color: color-mix(in srgb, var(--color-text) 52%, transparent);
+  font-size: 14.5px; font-weight: 600;
+}
+.st-boot svg { color: var(--color-accent); animation: st-boot-pulse 1.4s var(--ease-out) infinite; }
+@keyframes st-boot-pulse { 0%, 100% { opacity: .45; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .st-boot svg { animation: none; opacity: 1; } }
 /* ── crash screen ───────────────────────────────────────────────────── */
 .st-crash {
   min-height: 100vh; display: grid; place-items: center; padding: 32px 20px;

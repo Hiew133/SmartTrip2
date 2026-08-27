@@ -1,0 +1,79 @@
+rules_version = '2';
+
+/* SmartTrip — Firestore Security Rules
+
+   Access is decided entirely from two mirrors kept on the trip document:
+     memberIds : [uid]            who may read
+     roles     : { uid: role }    what each of them may do
+
+   They are denormalised off `members` so a rule never has to read a second
+   document. The catch is that anyone who can write the trip could rewrite
+   their own role, so updates below explicitly forbid touching those fields
+   unless the caller is the owner. */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /trips/{tripId} {
+      function trip()     { return resource.data; }
+      function incoming() { return request.resource.data; }
+      function uid()      { return request.auth.uid; }
+      function signedIn() { return request.auth != null; }
+
+      function isMember() { return signedIn() && uid() in trip().memberIds; }
+      function role()     { return trip().roles[uid()]; }
+      function isOwner()  { return isMember() && role() == 'owner'; }
+      function isEditor() { return isMember() && (role() == 'owner' || role() == 'edit'); }
+
+      // fields that decide access; only the owner may move them
+      function accessUnchanged() {
+        return incoming().memberIds == trip().memberIds
+            && incoming().roles == trip().roles
+            && incoming().ownerId == trip().ownerId;
+      }
+
+      function wellFormed() {
+        return incoming().keys().hasAll(['title', 'members', 'memberIds', 'roles', 'ownerId'])
+            && incoming().title is string
+            && incoming().members is list
+            && incoming().memberIds is list
+            && incoming().memberIds.size() <= 50;
+      }
+
+      allow read: if isMember();
+
+      // a new trip must start with its creator as the only seated member
+      allow create: if signedIn()
+                    && wellFormed()
+                    && incoming().ownerId == uid()
+                    && incoming().memberIds == [uid()]
+                    && incoming().roles[uid()] == 'owner';
+
+      allow update: if wellFormed()
+                    && (isOwner() || (isEditor() && accessUnchanged()));
+
+      allow delete: if isOwner();
+
+      /* Sub-collections inherit nothing, so each states its own rule. They read
+         the parent trip once per request to find the caller's role. */
+      function parent()      { return get(/databases/$(database)/documents/trips/$(tripId)).data; }
+      function canRead()     { return signedIn() && uid() in parent().memberIds; }
+      function canWrite()    { return canRead() && parent().roles[uid()] in ['owner', 'edit']; }
+
+      match /days/{dayId} {
+        allow read: if canRead();
+        allow write: if canWrite();
+      }
+
+      match /expenses/{expenseId} {
+        allow read: if canRead();
+        allow write: if canWrite();
+      }
+    }
+
+    // anything not named above stays closed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

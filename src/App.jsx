@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from './store.jsx';
+import { signOutUser } from './backend/index.js';
 import { Avatar, Pin } from './components/ui.jsx';
 import Login from './screens/Login.jsx';
 import Trips from './screens/Trips.jsx';
@@ -15,6 +16,7 @@ const NAV = [
 
 function TopBar() {
   const { state, patch, go } = useApp();
+  const me = state.user;
   return (
     <header className="st-topbar">
       <nav className="st-nav" aria-label="Điều hướng chính">
@@ -37,10 +39,10 @@ function TopBar() {
           <span className="st-lang-dot" />EN
         </button>
         <span className="st-navmeta">
-          <Avatar initial="M" size={32} />
-          <span className="st-navname">Minh</span>
+          <Avatar initial={(me?.name || '?')[0].toUpperCase()} size={32} />
+          <span className="st-navname" title={me?.email}>{me?.name || 'Bạn'}</span>
         </span>
-        <button type="button" className="btn btn-ghost" onClick={() => go('login')}>Đăng xuất</button>
+        <button type="button" className="btn btn-ghost" onClick={() => signOutUser()}>Đăng xuất</button>
       </nav>
     </header>
   );
@@ -48,7 +50,7 @@ function TopBar() {
 
 export default function App() {
   const { state } = useApp();
-  const inApp = state.screen !== 'login';
+  const inApp = state.screen !== 'login' && !!state.user;
 
   /* Entry animations are decoration; this guarantees the view ends up visible
      even if they never get to run (background tab, throttling). */
@@ -80,10 +82,20 @@ export default function App() {
       {inApp && <a className="st-skip" href="#main">Bỏ qua, tới nội dung chính</a>}
       {inApp && <TopBar />}
       <main id="main">
-        {state.screen === 'login' && <Login />}
-        {state.screen === 'trips' && <Trips />}
-        {state.screen === 'trip' && <Trip />}
-        {state.screen === 'ai' && <AIDesk />}
+        {/* Auth resolves asynchronously; flashing the login form at someone who
+            is already signed in reads as being logged out. */}
+        {!state.authReady ? (
+          <div className="st-boot" role="status" aria-label="Đang mở SmartTrip">
+            <Pin width="30" height="30" />
+            <span>Đang mở SmartTrip…</span>
+          </div>
+        ) : !state.user ? <Login /> : (
+          <>
+            {state.screen === 'trips' && <Trips />}
+            {state.screen === 'trip' && <Trip />}
+            {state.screen === 'ai' && <AIDesk />}
+          </>
+        )}
       </main>
       {state.showAdd && <ExpenseDialog />}
       <Toast />

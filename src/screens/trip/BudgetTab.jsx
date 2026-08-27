@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApp, useActiveTrip, computeBudget, settleKey, toggleSettled } from '../../store.jsx';
+import { useApp, computeBudget, settleKey, toggleSettled } from '../../store.jsx';
 import { fmt, first } from '../../data.js';
 import { Avatar, Check, Plus, useCountUp } from '../../components/ui.jsx';
 
@@ -17,9 +17,8 @@ function Stat({ label, value, fallback, variant = 'muted' }) {
 
 const parseAmount = (raw) => parseInt(String(raw ?? '').replace(/[^\d]/g, ''), 10) || 0;
 
-export default function BudgetTab() {
-  const { patch, patchTrip } = useApp();
-  const trip = useActiveTrip();
+export default function BudgetTab({ trip, editable }) {
+  const { patch, actions } = useApp();
   const { core, total, share, bal, transfers } = computeBudget(trip);
   const [planDraft, setPlanDraft] = useState(null);   // null ⇒ showing the stored value
   const [confirmId, setConfirmId] = useState(null);
@@ -41,12 +40,12 @@ export default function BudgetTab() {
   });
 
   const removeExpense = (id) => {
-    patchTrip((t) => ({ expenses: t.expenses.filter((e) => e.id !== id) }));
+    actions.removeExpense(id);
     setConfirmId(null);
   };
 
   const commitPlan = () => {
-    if (planDraft !== null) patchTrip(() => ({ plan: parseAmount(planDraft) }));
+    if (planDraft !== null) actions.updateTrip({ plan: parseAmount(planDraft) });
     setPlanDraft(null);
   };
 
@@ -63,14 +62,16 @@ export default function BudgetTab() {
             fallback={core.length ? undefined : '—'} />
         </div>
 
-        <div className="field st-planfield">
-          <label htmlFor="bt-plan">Ngân sách kế hoạch (₫)</label>
-          <input className="input" id="bt-plan" inputMode="numeric" placeholder="vd: 16000000"
-            value={planDraft ?? (plan || '')}
-            onChange={(e) => setPlanDraft(e.target.value)}
-            onBlur={commitPlan}
-            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
-        </div>
+        {editable && (
+          <div className="field st-planfield">
+            <label htmlFor="bt-plan">Ngân sách kế hoạch (₫)</label>
+            <input className="input" id="bt-plan" inputMode="numeric" placeholder="vd: 16000000"
+              value={planDraft ?? (plan || '')}
+              onChange={(e) => setPlanDraft(e.target.value)}
+              onBlur={commitPlan}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+          </div>
+        )}
 
         {plan > 0 ? (
           <>
@@ -94,9 +95,11 @@ export default function BudgetTab() {
           <div className="st-empty">
             <h4>Chưa ghi khoản chi nào</h4>
             <p>Thêm khoản đầu tiên để SmartTrip tính phần mỗi người và ai còn nợ ai.</p>
-            <button type="button" className="btn btn-primary" onClick={openAdd}>
-              <Plus width="15" height="15" />Thêm khoản chi
-            </button>
+            {editable && (
+              <button type="button" className="btn btn-primary" onClick={openAdd}>
+                <Plus width="15" height="15" />Thêm khoản chi
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -108,7 +111,7 @@ export default function BudgetTab() {
                 <tr>
                   <th scope="col">Khoản chi</th><th scope="col">Nhóm</th>
                   <th scope="col">Người ứng</th><th scope="col" style={{ textAlign: 'right' }}>Số tiền</th>
-                  <th scope="col"><span className="st-sr">Thao tác</span></th>
+                  {editable && <th scope="col"><span className="st-sr">Thao tác</span></th>}
                 </tr>
               </thead>
               <tbody>
@@ -118,34 +121,39 @@ export default function BudgetTab() {
                     <td className="text-muted">{e.cat}</td>
                     <td>{first(byId.get(e.payerId)?.name ?? '—')}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(e.amount)}</td>
-                    <td className="st-rowacts">
-                      {confirmId === e.id ? (
-                        <>
-                          <button type="button" className="st-linkbtn st-danger" onClick={() => removeExpense(e.id)}>
-                            Xoá hẳn?
-                          </button>
-                          <button type="button" className="st-linkbtn" onClick={() => setConfirmId(null)}>Giữ</button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" className="st-linkbtn" onClick={() => openEdit(e)}
-                            aria-label={`Sửa ${e.name}`}>Sửa</button>
-                          <button type="button" className="st-linkbtn st-danger" onClick={() => setConfirmId(e.id)}
-                            aria-label={`Xoá ${e.name}`}>Xoá</button>
-                        </>
-                      )}
-                    </td>
+                    {editable && (
+                      <td className="st-rowacts">
+                        {confirmId === e.id ? (
+                          <>
+                            <button type="button" className="st-linkbtn st-danger" onClick={() => removeExpense(e.id)}>
+                              Xoá hẳn?
+                            </button>
+                            <button type="button" className="st-linkbtn" onClick={() => setConfirmId(null)}>Giữ</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className="st-linkbtn" onClick={() => openEdit(e)}
+                              aria-label={`Sửa ${e.name}`}>Sửa</button>
+                            <button type="button" className="st-linkbtn st-danger" onClick={() => setConfirmId(e.id)}
+                              aria-label={`Xoá ${e.name}`}>Xoá</button>
+                          </>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
                 <tr>
                   <td style={{ fontWeight: 700 }}>Tổng cộng</td><td /><td />
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(total)}</td><td />
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(total)}</td>
+                  {editable && <td />}
                 </tr>
               </tbody>
             </table>
-            <button type="button" className="btn btn-secondary" style={{ marginTop: 20 }} onClick={openAdd}>
-              <Plus width="15" height="15" />Thêm khoản chi
-            </button>
+            {editable && (
+              <button type="button" className="btn btn-secondary" style={{ marginTop: 20 }} onClick={openAdd}>
+                <Plus width="15" height="15" />Thêm khoản chi
+              </button>
+            )}
           </>
         )}
       </section>
@@ -185,10 +193,12 @@ export default function BudgetTab() {
                 </span>
                 <span style={{ flex: 1 }} />
                 <span className="st-settle-amt">{fmt(t.a)}</span>
-                <button type="button" className="st-settle-btn"
-                  onClick={() => patchTrip((tr) => ({ settled: toggleSettled(tr.settled, transfers, key) }))}>
-                  {done ? 'Hoàn tác' : <><Check width="13" height="13" style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Đã trả</>}
-                </button>
+                {editable && (
+                  <button type="button" className="st-settle-btn"
+                    onClick={() => actions.setSettled(toggleSettled(trip.settled, transfers, key))}>
+                    {done ? 'Hoàn tác' : <><Check width="13" height="13" style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Đã trả</>}
+                  </button>
+                )}
               </div>
             );
           })}

@@ -1,5 +1,5 @@
 import { Component } from 'react';
-import { LS_KEY } from '../store.jsx';
+import { LS_KEY } from '../backend/local.js';
 
 /* Last line of defence. A render error used to unmount the whole tree and leave
    a blank page — and because the cause was usually the saved trip data, every

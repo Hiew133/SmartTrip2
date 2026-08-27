@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useApp } from '../store.jsx';
+import { useApp, useTripsReady } from '../store.jsx';
 import {
-  STATUS_LABEL, daysUntil, fmt, formatRange, newTrip, photo, stopCount, tripStatus, tripTotal,
+  SEED_TRIPS, STATUS_LABEL, daysUntil, fmt, formatRange, photo, stopCount, tripStatus, tripTotal,
 } from '../data.js';
 import { Compass, Photo, Plus, Search, muted } from '../components/ui.jsx';
 
@@ -63,17 +63,33 @@ function leadLine(trips) {
 }
 
 export default function Trips() {
-  const { state, patch, go } = useApp();
+  const { state, go, actions } = useApp();
   const { trips } = state;
+  const tripsReady = useTripsReady();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('Tất cả');
+  const [busy, setBusy] = useState(false);
 
   const open = (id) => go('trip', { activeTripId: id, tripTab: 'itin', day: 0, focusIdx: -1 });
 
-  const createEmpty = () => {
-    const trip = newTrip();
-    patch((s) => ({ trips: [...s.trips, trip] }));
-    open(trip.id);
+  const createEmpty = async () => {
+    setBusy(true);
+    await actions.createTrip();
+    setBusy(false);
+  };
+
+  /* First sign-in lands on an empty account. Copying the demo trips in is the
+     fastest way to see what the app does without inventing a trip first. */
+  const loadSamples = async () => {
+    setBusy(true);
+    for (const t of SEED_TRIPS) {
+      await actions.createTrip({
+        title: t.title, seed: t.seed, alt: t.alt, body: t.body,
+        startDate: t.startDate, endDate: t.endDate, plan: t.plan,
+        days: t.days, expenses: t.expenses, members: t.members, settled: {},
+      }, { open: false });
+    }
+    setBusy(false);
   };
 
   const query = q.trim().toLowerCase();
@@ -93,7 +109,7 @@ export default function Trips() {
           <p className="st-lede" style={{ margin: '14px 0 0' }}>{leadLine(trips)}</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-secondary" onClick={createEmpty}>
+          <button type="button" className="btn btn-secondary" onClick={createEmpty} disabled={busy}>
             <Plus width="15" height="15" />Chuyến trống
           </button>
           <button type="button" className="btn btn-primary" onClick={() => go('ai')}>
@@ -101,6 +117,8 @@ export default function Trips() {
           </button>
         </div>
       </header>
+
+      {state.dataError && <p className="st-error" style={{ marginTop: 20 }}>{state.dataError}</p>}
 
       <div className="st-toolbar st-reveal">
         <label className="st-search">
@@ -116,7 +134,26 @@ export default function Trips() {
         </div>
       </div>
 
-      {cards.length === 0 ? (
+      {!tripsReady ? (
+        <section className="st-trips" style={{ marginTop: 30 }} aria-busy="true" aria-label="Đang tải chuyến đi">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="st-skel" style={{ height: i === 0 ? 300 : 210, borderRadius: 28 }} />
+          ))}
+        </section>
+      ) : trips.length === 0 ? (
+        <div className="st-empty" style={{ marginTop: 30 }}>
+          <h4>Chưa có chuyến đi nào</h4>
+          <p>Bắt đầu bằng một chuyến trống, để AI soạn giúp, hoặc nạp ba chuyến mẫu để xem thử.</p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button type="button" className="btn btn-primary" onClick={createEmpty} disabled={busy}>
+              <Plus width="15" height="15" />Chuyến trống
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={loadSamples} disabled={busy}>
+              {busy ? 'Đang nạp…' : 'Nạp 3 chuyến mẫu'}
+            </button>
+          </div>
+        </div>
+      ) : cards.length === 0 ? (
         <div className="st-empty" style={{ marginTop: 30 }}>
           <h4>Không tìm thấy chuyến đi</h4>
           <p>Thử từ khoá khác hoặc chuyển bộ lọc sang "Tất cả".</p>

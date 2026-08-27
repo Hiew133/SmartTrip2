@@ -1,24 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { useApp, useActiveTrip } from '../../store.jsx';
+import { useApp } from '../../store.jsx';
 import { uid } from '../../data.js';
 import { Avatar, Check, Seg } from '../../components/ui.jsx';
 
 const ROLE_LABEL = { edit: 'Sửa', view: 'Xem' };
 
-export default function MembersTab() {
-  const { state, patch, patchTrip, notify } = useApp();
-  const trip = useActiveTrip();
+export default function MembersTab({ trip, role }) {
+  const { state, patch, notify, actions } = useApp();
   const copyTimer = useRef(null);
   const linkRef = useRef(null);
   const [inviteErr, setInviteErr] = useState('');
 
-  const shareLink = `https://smarttrip.vn/t/${trip.id}`;
+  const isOwner = role === 'owner';
+  const shareLink = `${window.location.origin}/t/${trip.id}`;
 
   useEffect(() => () => clearTimeout(copyTimer.current), []);
-
-  const setRole = (id, role) => patchTrip((t) => ({
-    members: t.members.map((m) => (m.id === id ? { ...m, role } : m)),
-  }));
 
   const sendInvite = () => {
     const email = state.inviteEmail.trim();
@@ -32,9 +28,7 @@ export default function MembersTab() {
     }
     setInviteErr('');
     const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    patchTrip((t, s) => ({
-      members: [...t.members, { id: uid('mem'), name, email, role: s.inviteRole, pending: true }],
-    }));
+    actions.addMember({ id: uid('mem'), name, email, role: state.inviteRole, pending: true, uid: null });
     patch({ inviteEmail: '' });
     notify(`Đã gửi lời mời tới ${email}`, 'sage');
   };
@@ -81,33 +75,38 @@ export default function MembersTab() {
             <span style={{ flex: 1 }} />
             {m.role === 'owner' && <span className="tag tag-accent">Chủ chuyến đi</span>}
             {m.pending && <span className="tag tag-accent-2">Chờ phản hồi</span>}
-            {m.role !== 'owner' && !m.pending && (
+            {m.role !== 'owner' && !m.pending && (isOwner ? (
               <Seg ariaLabel={`Quyền của ${m.name}`}
                 options={['edit', 'view'].map((r) => ({
-                  key: r, label: ROLE_LABEL[r], active: m.role === r, onClick: () => setRole(m.id, r),
+                  key: r, label: ROLE_LABEL[r], active: m.role === r,
+                  onClick: () => actions.setMemberRole(m.id, r),
                   style: { fontSize: 12, padding: '5px 13px' },
                 }))} />
-            )}
+            ) : (
+              <span className="tag">{ROLE_LABEL[m.role]}</span>
+            ))}
           </div>
         ))}
       </div>
 
-      <div className="field" style={{ marginTop: 32 }}>
-        <label htmlFor="st-invite">Mời qua email<span className="st-en"> · Invite by email</span></label>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input className="input" id="st-invite" type="email" placeholder="banbe@example.com"
-            style={{ flex: 1, minWidth: 220 }} value={state.inviteEmail}
-            aria-invalid={!!inviteErr} aria-describedby={inviteErr ? 'st-invite-err' : undefined}
-            onChange={(e) => { patch({ inviteEmail: e.target.value }); if (inviteErr) setInviteErr(''); }}
-            onKeyDown={(e) => e.key === 'Enter' && sendInvite()} />
-          <Seg ariaLabel="Quyền của người được mời" options={['edit', 'view'].map((r) => ({
-            key: r, label: ROLE_LABEL[r], active: state.inviteRole === r,
-            onClick: () => patch({ inviteRole: r }), style: { padding: '7px 16px' },
-          }))} />
-          <button type="button" className="btn btn-primary" onClick={sendInvite}>Gửi lời mời</button>
+      {isOwner && (
+        <div className="field" style={{ marginTop: 32 }}>
+          <label htmlFor="st-invite">Mời qua email<span className="st-en"> · Invite by email</span></label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <input className="input" id="st-invite" type="email" placeholder="banbe@example.com"
+              style={{ flex: 1, minWidth: 220 }} value={state.inviteEmail}
+              aria-invalid={!!inviteErr} aria-describedby={inviteErr ? 'st-invite-err' : undefined}
+              onChange={(e) => { patch({ inviteEmail: e.target.value }); if (inviteErr) setInviteErr(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && sendInvite()} />
+            <Seg ariaLabel="Quyền của người được mời" options={['edit', 'view'].map((r) => ({
+              key: r, label: ROLE_LABEL[r], active: state.inviteRole === r,
+              onClick: () => patch({ inviteRole: r }), style: { padding: '7px 16px' },
+            }))} />
+            <button type="button" className="btn btn-primary" onClick={sendInvite}>Gửi lời mời</button>
+          </div>
+          {inviteErr && <span className="st-error" id="st-invite-err">{inviteErr}</span>}
         </div>
-        {inviteErr && <span className="st-error" id="st-invite-err">{inviteErr}</span>}
-      </div>
+      )}
 
       <div className="field" style={{ marginTop: 18 }}>
         <label htmlFor="st-link">Hoặc chia sẻ liên kết<span className="st-en"> · Share link</span></label>
@@ -122,7 +121,8 @@ export default function MembersTab() {
         {state.copyErr && <span className="st-error" id="st-link-err">{state.copyErr}</span>}
       </div>
       <p className="st-fineprint">
-        Người mở liên kết sẽ vào với quyền Xem. Chủ chuyến đi có thể nâng quyền bất cứ lúc nào.
+        Lời mời hiện mới ghi vào chuyến đi ở trạng thái "Chờ phản hồi" — chưa có email nào
+        được gửi đi và người được mời chưa tự nhận được quyền. Xem mục "Còn nợ" trong README.
       </p>
     </section>
   );
