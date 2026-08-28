@@ -43,9 +43,10 @@ function commit(next) {
 const edit = (tripId, fn) => commit(trips.map((t) => (t.id === tripId ? fn(t) : t)));
 
 export function subscribeTrips(user, cb) {
-  cb(load());
-  listeners.add(cb);
-  return () => listeners.delete(cb);
+  const emit = (list) => cb(list, { fromCache: false });
+  emit(load());
+  listeners.add(emit);
+  return () => listeners.delete(emit);
 }
 
 export async function createTrip(user, trip) {

@@ -81,7 +81,7 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Auth (Google + Email/Password) | ✅ chạy thật, đã đăng nhập được |
 | Firestore đọc/ghi | ✅ chạy thật, chuyến đi đọc từ cloud |
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
-| Firebase AI Logic (Gemini) | ❌ **bị khoá tới khi enforce App Check** |
+| Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
 | Test Security Rules | ❌ **chưa từng chạy** (xem "Đang vướng") |
 
 ---
@@ -201,6 +201,22 @@ trong `backend/ai.js` thì phải thử với config thật, không chỉ chế 
 **Bundler không bắt biến chưa khai báo.** Một lần `sed` xoá nhầm dòng khai báo trong
 `firestore.js`, `vite build` vẫn xanh, chỉ nổ lúc chạy — mà đúng vào đường không test
 được. Đó là lý do có ESLint. Chạy `npm run lint` trước khi commit.
+
+**Không được ghi trip và subcollection của nó trong cùng một batch.** Rule của
+`days`/`expenses` `get()` document trip cha để tra quyền; trong cùng batch thì cha
+**chưa tồn tại**, nên mọi ghi lồng bên trong bị `permission-denied`. `createTrip` phải
+`setDoc` trip trước và await, rồi mới batch phần còn lại. Dấu hiệu nhận ra: tạo chuyến
+**rỗng** thì được, tạo chuyến **có ngày** thì hỏng.
+
+**Firestore giết listener vĩnh viễn khi nó lỗi — phải tự gắn lại.** Listener `days` của
+một chuyến vừa tạo có thể lỗi ngay lúc gắn (rule đọc cha, server chưa thấy cha), và sau
+đó nó chết luôn: ngày nằm trong Firestore nhưng app hiện rỗng cho tới khi tải lại trang.
+`subscribeTrips` giờ bỏ listener lỗi rồi gắn lại tối đa 3 lần.
+
+**Snapshot từ cache không phải bằng chứng đã hết lỗi.** Sau một lỗi quyền, Firestore vẫn
+trả dữ liệu cache như một snapshot thành công. Trước đây nó xoá mất `dataError` và app
+hiện dữ liệu cũ như không có chuyện gì. Giờ chỉ xoá `dataError` khi
+`snap.metadata.fromCache` là false.
 
 **Dev server cache module cũ sau khi đổi export.** Thêm export mới vào một file đang
 được import mà HMR báo `does not provide an export named ...` thì restart dev server,

@@ -1,6 +1,6 @@
 import {
   collection, deleteDoc, doc, onSnapshot, query, runTransaction,
-  serverTimestamp, updateDoc, where, writeBatch,
+  serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
 import { cleanTrip } from './schema.js';
@@ -75,53 +75,98 @@ export function subscribeTrips(user, cb, onError) {
 
   const fail = (err) => { console.error('SmartTrip · Firestore:', err); onError?.(err); };
 
+  /* fromCache says the snapshot came from the local copy rather than the
+     server. It matters after a permission error: Firestore keeps serving the
+     last cached documents, and treating that as a fresh success would wipe the
+     error message and leave stale trips on screen looking perfectly healthy. */
+  let fromCache = true;
   const emit = () => cb(
     [...meta.keys()]
       .map((id) => cleanTrip({ ...meta.get(id), id, days: days.get(id) ?? [], expenses: expenses.get(id) ?? [] }))
       .filter(Boolean)
       .sort((a, b) => a.createdAt - b.createdAt),
+    { fromCache },
   );
+
+  /* Firestore kills a listener for good once it errors. A day or expense
+     listener can fail the moment its trip is created — the rules read the
+     parent trip, which the server may not consider readable yet — and the
+     result was a trip whose days stayed empty until someone reloaded the page.
+     So a failed sub-listener is dropped and re-attached a moment later, a few
+     times, instead of being left dead. */
+  const retries = new Map();
+  const timers = new Set();
 
   const watch = (id) => {
     if (subs.has(id)) return;
+
+    const retry = (err) => {
+      fail(err);
+      (subs.get(id) ?? []).forEach((u) => u());
+      subs.delete(id);
+      const n = (retries.get(id) ?? 0) + 1;
+      retries.set(id, n);
+      if (n > 3) return;                       // genuinely denied: stop asking
+      const t = setTimeout(() => {
+        timers.delete(t);
+        if (meta.has(id)) watch(id);
+      }, 400 * n);
+      timers.add(t);
+    };
+
     subs.set(id, [
       onSnapshot(daysRef(id), (snap) => {
         days.set(id, snap.docs.map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
         emit();
-      }, fail),
+      }, retry),
       onSnapshot(expensesRef(id), (snap) => {
         expenses.set(id, snap.docs.map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)));
         emit();
-      }, fail),
+      }, retry),
     ]);
   };
 
   const unwatch = (id) => {
     (subs.get(id) ?? []).forEach((u) => u());
     subs.delete(id); meta.delete(id); days.delete(id); expenses.delete(id);
+    retries.delete(id);
   };
 
   const unsubTrips = onSnapshot(q, (snap) => {
+    fromCache = snap.metadata.fromCache;
     const live = new Set(snap.docs.map((d) => d.id));
     snap.docs.forEach((d) => { meta.set(d.id, d.data()); watch(d.id); });
     [...subs.keys()].forEach((id) => { if (!live.has(id)) unwatch(id); });
     emit();
   }, fail);
 
-  return () => { unsubTrips(); [...subs.keys()].forEach(unwatch); };
+  return () => {
+    unsubTrips();
+    timers.forEach(clearTimeout);
+    [...subs.keys()].forEach(unwatch);
+  };
 }
 
 /* ── writes ─────────────────────────────────────────────────────────────── */
 
+/* The trip document is written and committed on its own, before anything in its
+   sub-collections. It cannot be one batch: the rules for days and expenses read
+   the parent trip to find the caller's role, and inside a single batch that
+   parent does not exist yet — every nested write comes back permission-denied.
+   Creating an empty trip worked, creating one with days did not, which is what
+   gave this away. */
 export async function createTrip(user, trip) {
   const ref = doc(tripsRef());
-  const batch = writeBatch(db());
-  batch.set(ref, tripDoc({ ...trip, ownerId: user.uid }));
-  trip.days.forEach((d, i) => batch.set(dayRef(ref.id, d.id), dayDoc(d, i)));
-  trip.expenses.forEach((e) => batch.set(expenseRef(ref.id, e.id), expenseDoc(e)));
-  await batch.commit();
+  await setDoc(ref, tripDoc({ ...trip, ownerId: user.uid }));
+
+  if (trip.days.length || trip.expenses.length) {
+    const batch = writeBatch(db());
+    trip.days.forEach((d, i) => batch.set(dayRef(ref.id, d.id), dayDoc(d, i)));
+    trip.expenses.forEach((e) => batch.set(expenseRef(ref.id, e.id), expenseDoc(e)));
+    await batch.commit();
+  }
   return ref.id;
 }
 

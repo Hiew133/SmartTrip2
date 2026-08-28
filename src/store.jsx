@@ -88,11 +88,12 @@ export function AppProvider({ children }) {
     if (!uidKey) return undefined;
     return repo.subscribeTrips(
       stateRef.current.user,
-      (trips) => setState((s) => ({
+      (trips, { fromCache } = {}) => setState((s) => ({
         ...s,
         trips,
         readyForUid: uidKey,
-        dataError: '',
+        // a cached snapshot is not proof the problem went away
+        dataError: fromCache ? s.dataError : '',
         // the open trip can be deleted by someone else mid-session
         activeTripId: trips.some((t) => t.id === s.activeTripId) ? s.activeTripId : (trips[0]?.id ?? null),
       })),
@@ -100,7 +101,7 @@ export function AppProvider({ children }) {
         ...s,
         readyForUid: uidKey,
         dataError: err?.code === 'permission-denied'
-          ? 'Không đọc được dữ liệu — kiểm tra Security Rules của Firestore.'
+          ? 'Không đọc được dữ liệu. Nếu vừa bật App Check, đăng ký debug token cho máy này; nếu không thì kiểm tra Security Rules.'
           : 'Không tải được dữ liệu chuyến đi. Kiểm tra kết nối rồi tải lại trang.',
       })),
     );
