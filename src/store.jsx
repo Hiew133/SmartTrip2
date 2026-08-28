@@ -218,6 +218,23 @@ export function AppProvider({ children }) {
       setSettled: (settled) => onTrip('đánh dấu đã trả', (id) => repo.setSettled(id, settled)),
       addMember: (member) => onTrip('gửi lời mời', (id) => repo.addMember(id, member)),
       setMemberRole: (memberId, role) => onTrip('đổi quyền', (id) => repo.setMemberRole(id, memberId, role)),
+      removeMember: (memberId) => onTrip('gỡ thành viên', (id) => repo.removeMember(id, memberId)),
+
+      /* Leaving is the one member change you make to yourself, so like
+         deleting a trip it ends with nothing left to look at. */
+      leaveTrip: async () => {
+        const me = stateRef.current.user;
+        if (!me) return false;
+        const ok = await onTrip('rời chuyến đi', async (id) => {
+          await repo.leaveTrip(id, me);
+          return true;
+        });
+        if (ok === true) {
+          go('trips', { activeTripId: null, focusIdx: -1 });
+          notify('Đã rời chuyến đi', 'neutral');
+        }
+        return ok === true;
+      },
     };
 
     return { patch, go, notify, actions };

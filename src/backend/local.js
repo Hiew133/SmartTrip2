@@ -96,6 +96,17 @@ export async function addMember(tripId, member) {
   edit(tripId, (t) => ({ ...t, members: [...t.members, member] }));
 }
 
+export async function removeMember(tripId, memberId) {
+  edit(tripId, (t) => ({ ...t, members: t.members.filter((m) => m.id !== memberId) }));
+}
+
+/* Same signature as the cloud one so the two repositories stay interchangeable.
+   Demo mode has no real identities — nobody's uid is on a seat — so in practice
+   this matches nothing and leaves the trip alone. */
+export async function leaveTrip(tripId, user) {
+  edit(tripId, (t) => ({ ...t, members: t.members.filter((m) => m.uid !== user.uid) }));
+}
+
 /* Demo mode has no real identities, so there is nothing to claim or repair. */
 export async function claimInvites() {
   return 0;

@@ -315,6 +315,40 @@ export async function repairMirrors(user) {
   return fixed;
 }
 
+/* Taking somebody off the trip — an owner's job, and the one that cancels an
+   invitation that was sent to the wrong address. Transactional for the same
+   reason addMember is: two people editing the list at once would otherwise
+   write whole arrays over each other. */
+export async function removeMember(tripId, memberId) {
+  await runTransaction(db(), async (tx) => {
+    const snap = await tx.get(tripRef(tripId));
+    if (!snap.exists()) return;
+    const members = snap.data().members ?? [];
+    const target = members.find((m) => m.id === memberId);
+    if (!target) return;
+    // a trip with no owner has nobody who can administer it
+    if (target.role === 'owner') throw new Error('Không gỡ được chủ chuyến đi.');
+    const next = members.filter((m) => m.id !== memberId);
+    tx.update(tripRef(tripId), { members: next, ...derive(next), updatedAt: serverTimestamp() });
+  });
+}
+
+/* Giving up your own seat. The rules allow exactly this shape and nothing
+   else — see leavesOwnSeat — so the write has to touch only the member list
+   and the two mirrors that follow from it. */
+export async function leaveTrip(tripId, user) {
+  await runTransaction(db(), async (tx) => {
+    const snap = await tx.get(tripRef(tripId));
+    if (!snap.exists()) return;
+    const members = snap.data().members ?? [];
+    const me = members.find((m) => m.uid === user.uid);
+    if (!me) return;
+    if (me.role === 'owner') throw new Error('Chủ chuyến không rời được chuyến đi của mình.');
+    const next = members.filter((m) => m.id !== me.id);
+    tx.update(tripRef(tripId), { members: next, ...derive(next), updatedAt: serverTimestamp() });
+  });
+}
+
 export async function setMemberRole(tripId, memberId, role) {
   await runTransaction(db(), async (tx) => {
     const snap = await tx.get(tripRef(tripId));

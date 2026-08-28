@@ -28,6 +28,9 @@ export default function MembersTab({ trip, role }) {
   const copyTimer = useRef(null);
   const linkRef = useRef(null);
   const [inviteErr, setInviteErr] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(null);   // member id
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   const isOwner = role === 'owner';
   const shareLink = `${window.location.origin}/t/${trip.id}`;
@@ -74,6 +77,14 @@ export default function MembersTab({ trip, role }) {
     }
   };
 
+  /* On success the store goes back to the trip list — this tab belongs to a
+     trip the person can no longer see. */
+  const leave = async () => {
+    setLeaving(true);
+    const ok = await actions.leaveTrip();
+    if (!ok) { setLeaving(false); setConfirmLeave(false); }
+  };
+
   return (
     <section style={{ maxWidth: 740, marginTop: 30 }} aria-label="Thành viên và quyền">
       <h2 style={{ margin: '0 0 5px', fontSize: 27 }}>Thành viên &amp; quyền</h2>
@@ -108,9 +119,34 @@ export default function MembersTab({ trip, role }) {
             ) : (
               <span className="tag">{ROLE_LABEL[m.role]}</span>
             ))}
+            {/* the same control cancels a mis-addressed invitation and takes
+                somebody off the trip — a pending row is just a seat nobody
+                has claimed yet */}
+            {isOwner && m.role !== 'owner' && (confirmRemove === m.id ? (
+              <span className="st-confirm">
+                <button type="button" className="st-linkbtn st-danger"
+                  onClick={() => { actions.removeMember(m.id); setConfirmRemove(null); }}>
+                  {m.pending ? 'Huỷ lời mời?' : 'Gỡ hẳn?'}
+                </button>
+                <button type="button" className="st-linkbtn" onClick={() => setConfirmRemove(null)}>Giữ</button>
+              </span>
+            ) : (
+              <button type="button" className="st-linkbtn st-danger"
+                aria-label={`${m.pending ? 'Huỷ lời mời tới' : 'Gỡ'} ${m.name}`}
+                onClick={() => setConfirmRemove(m.id)}>
+                {m.pending ? 'Huỷ mời' : 'Gỡ'}
+              </button>
+            ))}
           </div>
         ))}
       </div>
+
+      {isOwner && (
+        <p className="st-fineprint" style={{ maxWidth: '58ch' }}>
+          Gỡ một người khỏi chuyến đi không xoá khoản chi họ đã ứng — những khoản
+          đó chuyển sang người còn lại đầu tiên, nên hãy tất toán trước khi gỡ.
+        </p>
+      )}
 
       {isOwner && (
         <div className="field" style={{ marginTop: 32 }}>
@@ -143,6 +179,31 @@ export default function MembersTab({ trip, role }) {
         </div>
         {state.copyErr && <span className="st-error" id="st-link-err">{state.copyErr}</span>}
       </div>
+      {!isOwner && (
+        <div style={{ marginTop: 30 }}>
+          {confirmLeave ? (
+            <div className="st-hint" role="alert">
+              <span>
+                Rời <b>{trip.title}</b> là mất quyền xem chuyến đi này. Chủ chuyến
+                phải mời lại nếu bạn muốn quay vào.
+              </span>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="btn btn-ghost st-danger" onClick={leave} disabled={leaving}>
+                {leaving ? 'Đang rời…' : 'Rời hẳn'}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setConfirmLeave(false)} disabled={leaving}>
+                Ở lại
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-ghost st-danger" style={{ marginLeft: -10 }}
+              onClick={() => setConfirmLeave(true)}>
+              Rời chuyến đi
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="st-fineprint">
         Người được mời ở trạng thái "Chờ phản hồi" cho tới lần đăng nhập đầu tiên bằng
         chính email đó — lúc đó chuyến đi tự hiện trong danh sách của họ. SmartTrip không

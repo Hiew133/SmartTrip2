@@ -57,6 +57,20 @@ const claimed = (over = {}) => {
     ...over,
   };
 };
+/** What the client writes when a member gives up their own seat. */
+const left = (who, over = {}) => {
+  const base = tripData();
+  const roles = { ...base.roles };
+  delete roles[who];
+  return {
+    ...base,
+    members: base.members.filter((m) => m.uid !== who),
+    memberIds: base.memberIds.filter((id) => id !== who),
+    roles,
+    ...over,
+  };
+};
+
 const tripRef = (fs, id = 'trip1') => doc(fs, 'trips', id);
 const expenseRef = (fs, id = 'e1') => doc(fs, 'trips', 'trip1', 'expenses', id);
 const dayRef = (fs, id = 'd1') => doc(fs, 'trips', 'trip1', 'days', id);
@@ -215,6 +229,72 @@ describe('firestore.rules', () => {
     await seed();
     await assertFails(getDoc(dayRef(asEmail(INVITEE, INVITEE_EMAIL))));
     await assertFails(getDoc(expenseRef(asEmail(INVITEE, INVITEE_EMAIL))));
+  });
+
+  /* `members` and `pendingEmails` are not read by any rule, which is exactly
+     why they were left unguarded — and why an editor could quietly wreck or
+     leak the trip through them while keeping the mirrors pristine. */
+
+  it('an editor cannot rewrite the members list', async () => {
+    await seed();
+    // emptying it makes the trip vanish from every client, the document intact
+    await assertFails(updateDoc(tripRef(as(EDITOR)), { ...tripData(), members: [] }));
+    // and the owner's own row is not the editor's to rewrite
+    await assertFails(updateDoc(tripRef(as(EDITOR)), {
+      ...tripData({
+        members: tripData().members.map((m) => (m.role === 'owner'
+          ? { ...m, name: 'Kẻ giả mạo', email: 'attacker@evil.vn' } : m)),
+      }),
+    }));
+  });
+
+  it('an editor cannot hand a stranger read access through pendingEmails', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(EDITOR)), {
+      ...tripData({ pendingEmails: [INVITEE_EMAIL, 'nguoila@x.vn'] }),
+    }));
+    await assertFails(getDoc(tripRef(asEmail(STRANGER, 'nguoila@x.vn'))));
+  });
+
+  it('the owner may still edit members and invitations', async () => {
+    await seed();
+    await assertSucceeds(updateDoc(tripRef(as(OWNER)), {
+      ...tripData({ pendingEmails: [INVITEE_EMAIL, 'ban@x.vn'] }),
+    }));
+  });
+
+  it('a member can give up their own seat', async () => {
+    await seed();
+    await assertSucceeds(updateDoc(tripRef(as(VIEWER)), left(VIEWER)));
+    await seed();
+    await assertSucceeds(updateDoc(tripRef(as(EDITOR)), left(EDITOR)));
+  });
+
+  it('leaving cannot promote anyone or edit the trip on the way out', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(EDITOR)), left(EDITOR, { plan: 1 })));
+    await seed();
+    await assertFails(updateDoc(tripRef(as(EDITOR)), left(EDITOR, { title: 'Cướp' })));
+    await seed();
+    await assertFails(updateDoc(tripRef(as(EDITOR)), left(EDITOR, {
+      roles: { [OWNER]: 'owner', [VIEWER]: 'edit' },
+    })));
+  });
+
+  it('leaving takes one seat, not two', async () => {
+    await seed();
+    const base = tripData();
+    await assertFails(updateDoc(tripRef(as(EDITOR)), {
+      ...base,
+      members: base.members.filter((m) => m.uid !== EDITOR && m.uid !== VIEWER),
+      memberIds: [OWNER],
+      roles: { [OWNER]: 'owner' },
+    }));
+  });
+
+  it('a stranger cannot use the leave path to touch the trip', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(STRANGER)), left(EDITOR)));
   });
 
   it('nothing outside /trips is reachable', async () => {

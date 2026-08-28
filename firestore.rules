@@ -37,11 +37,49 @@ service cloud.firestore {
       function isOwner()  { return isMember() && role() == 'owner'; }
       function isEditor() { return isMember() && (role() == 'owner' || role() == 'edit'); }
 
-      // fields that decide access; only the owner may move them
+      /* Fields that decide access; only the owner may move them.
+
+         `members` belongs in here too, even though it is not read by any rule.
+         It is the source the three mirrors are derived from, so an editor left
+         free to rewrite it could desync them: empty the list and the trip
+         vanishes from everybody's screen (the client drops a trip with no
+         members) while the document sits in Firestore untouched, or rewrite
+         the owner's row and their name and email are whatever the editor says.
+         `pendingEmails` likewise — an editor who can add an address to it is
+         handing a stranger read access to the whole trip. */
       function accessUnchanged() {
         return incoming().memberIds == trip().memberIds
             && incoming().roles == trip().roles
-            && incoming().ownerId == trip().ownerId;
+            && incoming().ownerId == trip().ownerId
+            && incoming().members == trip().members
+            && incoming().get('pendingEmails', []) == trip().get('pendingEmails', []);
+      }
+
+      /* Leaving a trip: the mirror image of claiming a seat, and the second
+         write a non-owner may make to these fields. It has to remove exactly
+         the caller's own uid and role, drop exactly one row from `members`,
+         and add or alter nothing — the set difference in the other direction
+         has to be empty, so rows belonging to other people cannot be edited
+         on the way out. The owner never reaches this path; they are already
+         allowed everything by isOwner(), and the app keeps the button away
+         from them because a trip with no owner has nobody to administer it.
+
+         Known limit: rules cannot walk `members` to match a row against
+         request.auth.uid, so this pins how many rows leave but not which one.
+         A departing member could drop somebody else's row instead of their
+         own. They gain nothing by it — the victim keeps their uid in
+         memberIds and roles, so their access is intact — and the owner can
+         re-add the row. Closing it properly needs the seat identity in the
+         document key rather than inside a list. */
+      function leavesOwnSeat() {
+        return isMember() && role() != 'owner'
+            && incoming().diff(trip()).affectedKeys()
+                 .hasOnly(['members', 'memberIds', 'roles', 'updatedAt'])
+            && incoming().memberIds.toSet() == trip().memberIds.toSet().difference([uid()].toSet())
+            && incoming().roles.diff(trip().roles).affectedKeys().hasOnly([uid()])
+            && !(uid() in incoming().roles)
+            && incoming().members.size() == trip().members.size() - 1
+            && incoming().members.toSet().difference(trip().members.toSet()).size() == 0;
       }
 
       function wellFormed() {
@@ -78,7 +116,10 @@ service cloud.firestore {
                     && incoming().roles[uid()] == 'owner';
 
       allow update: if wellFormed()
-                    && (isOwner() || (isEditor() && accessUnchanged()) || claimsOwnSeat());
+                    && (isOwner()
+                        || (isEditor() && accessUnchanged())
+                        || claimsOwnSeat()
+                        || leavesOwnSeat());
 
       allow delete: if isOwner();
 
