@@ -82,19 +82,25 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Firestore đọc/ghi | ✅ chạy thật, chuyến đi đọc từ cloud |
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
+| App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
 | Test Security Rules | ❌ **chưa từng chạy** (xem "Đang vướng") |
+
+Đã chạy thật trên project, không phải chỉ build: đăng nhập, đọc chuyến đi, `setDoc`,
+batch ghi ngày, `updateDoc` khoản chi, `runTransaction` mời thành viên, và Gemini sinh
+lịch trình có toạ độ rồi tạo chuyến mới từ bản nháp.
 
 ---
 
-## App Check — việc còn dở
+## App Check — đã xong
 
-Firebase từ chối phục vụ AI Logic cho project chưa enforce App Check:
+Firebase từ chối phục vụ AI Logic cho project chưa enforce App Check
+(`403 ... you must enforce Firebase App Check`). Đã cấu hình xong; phần dưới giữ lại
+để dựng lại từ đầu hoặc làm trên máy khác.
 
-```
-403 ... you must enforce Firebase App Check
-```
-
-Auth và Firestore vẫn chạy bình thường, chỉ Trợ lý AI bị khoá.
+**Debug token gắn theo từng máy/trình duyệt.** Máy khác, trình duyệt khác, hoặc xoá
+storage là sinh token mới và phải đăng ký lại — nếu không thì local dev không lấy được
+App Check token. Dấu hiệu: console báo
+`Error while retrieving App Check token ... 403` mỗi lần tải trang.
 
 ### Provider: reCAPTCHA Enterprise (bắt buộc)
 
@@ -177,6 +183,8 @@ với người thật.
 
 - Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app chưa có router.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, chưa có cách sắp xếp bằng bàn phím.
+- Trong Browser pane lúc kiểm thử, `net::ERR_CONNECTION_REFUSED` là do môi trường chặn
+  host ngoài (ảnh picsum, tile OpenStreetMap, Google Fonts) — không phải lỗi app.
 - `npm run lint` còn 3 cảnh báo `react-hooks/set-state-in-effect` có sẵn từ trước
   (animation vào màn, toast, count-up). Đã để mức `warn` có chủ ý, không phải bỏ sót.
 
