@@ -96,35 +96,45 @@ Firebase từ chối phục vụ AI Logic cho project chưa enforce App Check:
 
 Auth và Firestore vẫn chạy bình thường, chỉ Trợ lý AI bị khoá.
 
-### Chọn provider nào
+### Provider: reCAPTCHA Enterprise (bắt buộc)
 
-Màn đăng ký trong Console cho hai lựa chọn. **Chọn `reCAPTCHA` (cái dưới), không phải
-`reCAPTCHA Enterprise` (cái trên).**
+Google đã **khai tử reCAPTCHA classic** — chọn nó trong Console sẽ báo
+`reCAPTCHA is deprecated, please use reCAPTCHA Enterprise instead.`
+Nên chỉ còn một đường: **reCAPTCHA Enterprise**.
 
-| | reCAPTCHA (v3 classic) | reCAPTCHA Enterprise |
-|---|---|---|
-| Chi phí | Miễn phí | Cần bật billing trên Google Cloud |
-| Tạo khoá ở | [google.com/recaptcha/admin/create](https://www.google.com/recaptcha/admin/create) | Google Cloud Console → reCAPTCHA Enterprise |
-| Firebase hỏi khoá nào | **Secret key** | **Site key** |
-| Env cần đặt | `VITE_FIREBASE_APPCHECK_SITE_KEY` | thêm `VITE_FIREBASE_APPCHECK_ENTERPRISE=true` |
+Enterprise **không cần bật billing** — chạy được trên gói Spark miễn phí (chỉ giới hạn
+4 mức điểm thay vì 11, không ảnh hưởng gì tới App Check).
 
-Code hỗ trợ cả hai (`backend/firebase.js` → `attachAppCheck`), nhưng v3 classic đơn
-giản hơn và không cần thẻ.
+Firebase Console hỏi **site key** (khoá công khai), không phải secret — Enterprise không
+có secret key riêng cho luồng này. Code dùng `ReCaptchaEnterpriseProvider`, đã bật bằng
+`VITE_FIREBASE_APPCHECK_ENTERPRISE=true`.
 
-### Các bước (v3 classic)
+### Các bước
 
-1. [google.com/recaptcha/admin/create](https://www.google.com/recaptcha/admin/create)
-   → loại **reCAPTCHA v3** → domain `localhost` (+ domain deploy nếu có) → nhận **2 khoá**.
-2. Console → **App Check → Apps → SmartTrip** → bấm **+** ở dòng `reCAPTCHA` (dòng dưới
-   cùng, không phải Enterprise) → dán **secret key** → Save.
-3. `.env.local`: `VITE_FIREBASE_APPCHECK_SITE_KEY=<site key>`
+1. **Google Cloud Console → Fraud Defense** ([console.cloud.google.com/security/recaptcha](https://console.cloud.google.com/security/recaptcha)),
+   đúng project `nihon-speaking-29442-5f1db` → **Create key**:
+   - Platform: **Website**
+   - Type: **Score-based** (App Check bắt buộc score-based, không phải checkbox)
+   - Domains: `nihon-speaking-29442-5f1db.web.app` và
+     `nihon-speaking-29442-5f1db.firebaseapp.com`
+   - **Không thêm `localhost`** — tài liệu Firebase nói rõ đừng bỏ localhost vào khoá
+     thật. Local dev đi bằng debug token ở bước 4.
+2. Copy **site key** → Firebase Console → **App Check → Apps → SmartTrip →
+   reCAPTCHA Enterprise** → dán vào ô *reCAPTCHA Enterprise site key* → TTL để nguyên
+   1 hour → **Save**.
+3. `.env.local`:
+   ```
+   VITE_FIREBASE_APPCHECK_SITE_KEY=<site key>
+   VITE_FIREBASE_APPCHECK_ENTERPRISE=true
+   ```
 4. `npm run dev` → mở Console trình duyệt, app tự in **debug token** (UUID) → copy vào
-   **App Check → Apps → ⋮ → Manage debug tokens**. Thiếu bước này thì localhost bị chặn.
+   **App Check → Apps → ⋮ → Manage debug tokens**. Đây là cách localhost qua được mà
+   không phải nhét localhost vào khoá thật.
 5. **App Check → APIs** → **Enforce** cho *Firebase AI Logic*.
 
-> **Site key công khai, secret key thì không.** Site key nằm sẵn trong mọi trang dùng
-> reCAPTCHA nên vào `.env.local` là bình thường. Secret key chỉ dán vào Console, không
-> bao giờ vào code, `.env`, hay chat.
+> **Site key công khai.** Nó nằm sẵn trong mọi trang dùng reCAPTCHA nên vào `.env.local`
+> là bình thường. App Check không bảo vệ bằng cách giấu khoá này, mà bằng việc reCAPTCHA
+> chỉ cấp token cho request đến từ đúng domain đã đăng ký.
 
 ---
 
