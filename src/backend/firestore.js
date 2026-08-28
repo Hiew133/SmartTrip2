@@ -296,21 +296,40 @@ const sameList = (a = [], b = []) => a.length === b.length && a.every((x) => b.i
 
 /* pendingEmails was added after some trips had already been written, so their
    invitations were invisible to claimInvites. This repairs the mirrors on any
-   trip the caller owns, once per sign-in. Idempotent: it only writes when the
-   stored copy actually differs from what members implies. */
+   trip the caller owns. Idempotent: it only writes when the stored copy
+   actually differs from what members implies.
+
+   The snapshot from the query is used to decide *whether* to write; the write
+   itself re-reads inside a transaction and derives again. An earlier version
+   sent `{ ...data, ...want }` — the whole document as it looked at query time —
+   so anything a co-traveller changed in between was silently rolled back. Only
+   the three mirrors go over the wire now. */
 export async function repairMirrors(user) {
   const mine = await getDocs(query(tripsRef(), where('memberIds', 'array-contains', user.uid)));
   let fixed = 0;
 
+  const drifted = (members, stored) => {
+    const want = derive(members ?? []);
+    return sameList(want.pendingEmails, stored.pendingEmails)
+      && sameList(want.memberIds, stored.memberIds) ? null : want;
+  };
+
   for (const found of mine.docs) {
     const data = found.data();
     if (data.roles?.[user.uid] !== 'owner') continue;      // only the owner may rewrite these
-    const want = derive(data.members ?? []);
-    if (sameList(want.pendingEmails, data.pendingEmails)
-      && sameList(want.memberIds, data.memberIds)) continue;
+    if (!drifted(data.members, data)) continue;
+
     // eslint-disable-next-line no-await-in-loop -- a handful of trips at most
-    await updateDoc(tripRef(found.id), { ...data, ...want });
-    fixed += 1;
+    const ok = await runTransaction(db(), async (tx) => {
+      const snap = await tx.get(tripRef(found.id));
+      if (!snap.exists()) return false;
+      const fresh = snap.data();
+      const want = drifted(fresh.members, fresh);
+      if (!want) return false;                             // someone fixed it first
+      tx.update(tripRef(found.id), want);
+      return true;
+    });
+    if (ok) fixed += 1;
   }
   return fixed;
 }

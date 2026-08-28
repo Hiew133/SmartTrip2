@@ -4,6 +4,29 @@ import { firebaseEnabled, refreshUser, repo, subscribeAuth } from './backend/ind
 
 const PREF_KEY = 'smarttrip-prefs';
 
+/* repairMirrors is a one-time migration for trips written before pendingEmails
+   existed. Every write since goes through derive(), so once it has run for an
+   account there is nothing left for it to find — and running it again means a
+   full scan of the trip collection on *every* sign-in, for nothing. The flag
+   is per device and per account; a failure leaves it unset so the next sign-in
+   tries again. */
+const REPAIR_KEY = 'smarttrip-mirrors-repaired';
+
+const repairDone = (uid) => {
+  try {
+    return (JSON.parse(localStorage.getItem(REPAIR_KEY)) ?? []).includes(uid);
+  } catch {
+    return false;                     // private mode, or a value we did not write
+  }
+};
+
+const markRepairDone = (uid) => {
+  try {
+    const seen = JSON.parse(localStorage.getItem(REPAIR_KEY)) ?? [];
+    if (!seen.includes(uid)) localStorage.setItem(REPAIR_KEY, JSON.stringify([...seen, uid]));
+  } catch { /* it just runs once more next time */ }
+};
+
 /* Share links look like /t/{tripId}. There is no router — the app is one
    screen stack driven by state — so the path is read once at boot and kept as
    an intent to act on later: the trip list has not arrived yet, and the person
@@ -107,7 +130,11 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!uidKey) return;
     const me = stateRef.current.user;
-    repo.repairMirrors(me).catch((err) => console.error('SmartTrip · vá dữ liệu chuyến đi:', err));
+    if (!repairDone(uidKey)) {
+      repo.repairMirrors(me)
+        .then(() => markRepairDone(uidKey))
+        .catch((err) => console.error('SmartTrip · vá dữ liệu chuyến đi:', err));
+    }
     repo.claimInvites(me)
       .then((n) => {
         if (n > 0) {
