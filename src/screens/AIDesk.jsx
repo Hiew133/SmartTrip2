@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '../store.jsx';
 import { fmt, parseISO } from '../data.js';
 import { aiAvailable, generateItinerary } from '../backend/index.js';
@@ -50,6 +51,9 @@ function DraftSkeleton({ days }) {
 
 export default function AIDesk() {
   const { state, patch, actions } = useApp();
+  /* Creating the trip is a network round-trip, and the button stays clickable
+     the whole way there — a second press was making a second trip. */
+  const [saving, setSaving] = useState(false);
 
   const party = PARTY_SIZE[state.aiParty] ?? 1;
   const budgetPerPerson = parseAmount(state.aiBudget);
@@ -79,6 +83,8 @@ export default function AIDesk() {
   };
 
   const useDraft = async () => {
+    if (saving) return;
+    setSaving(true);
     const id = await actions.createTrip({
       title: draft.title || state.aiDest.split(',')[0].trim() || 'Chuyến đi mới',
       seed: `ai-${Math.random().toString(36).slice(2, 8)}`,
@@ -91,6 +97,7 @@ export default function AIDesk() {
     });
     // a used draft is spent — coming back to the desk should offer a fresh form
     if (id) patch({ aiPhase: 'form', aiDraft: null });
+    else setSaving(false);          // the toast said why; the draft is still here to retry
   };
 
   return (
@@ -210,10 +217,10 @@ export default function AIDesk() {
             Giá và toạ độ do mô hình ước tính — kiểm tra lại trước khi đặt chỗ.
           </p>
           <div style={{ display: 'flex', gap: 12, marginTop: 22, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary" onClick={useDraft}>
-              Dùng lịch trình này<ArrowRight width="15" height="15" />
+            <button type="button" className="btn btn-primary" onClick={useDraft} disabled={saving}>
+              {saving ? 'Đang tạo chuyến đi…' : <>Dùng lịch trình này<ArrowRight width="15" height="15" /></>}
             </button>
-            <button type="button" className="btn btn-secondary"
+            <button type="button" className="btn btn-secondary" disabled={saving}
               onClick={() => patch({ aiPhase: 'form', aiDraft: null })}>
               Soạn lại
             </button>

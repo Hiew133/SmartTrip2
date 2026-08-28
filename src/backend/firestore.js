@@ -181,7 +181,28 @@ export async function updateTrip(tripId, fields) {
   await updateDoc(tripRef(tripId), patch);
 }
 
+/* Firestore does not cascade, and the children have to go first — not for
+   tidiness but because they become unreachable the moment the parent is gone:
+   the rules for days and expenses `get()` the trip document to find the
+   caller's role, and a get() on a deleted document returns null, so every
+   later read, write and delete on the leftovers is denied for good. Deleting
+   the trip first would strand its days and expenses in the project forever
+   with no client able to touch them. */
 export async function deleteTrip(tripId) {
+  const [days, expenses] = await Promise.all([
+    getDocs(daysRef(tripId)),
+    getDocs(expensesRef(tripId)),
+  ]);
+
+  // one batch caps at 500 writes; a trip is nowhere near that, but a run of
+  // several years of expenses should not be the thing that breaks deletion
+  const children = [...days.docs, ...expenses.docs];
+  for (let i = 0; i < children.length; i += 400) {
+    const batch = writeBatch(db());
+    children.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+
   await deleteDoc(tripRef(tripId));
 }
 

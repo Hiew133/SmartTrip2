@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp, useActiveTrip, useTripRole, canEdit, computeBudget } from '../store.jsx';
 import { STATUS_LABEL, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
 import { Avatar, ChevronLeft, Photo, Users } from '../components/ui.jsx';
@@ -18,6 +19,18 @@ export default function Trip() {
   const role = useTripRole(trip);
   const editable = canEdit(role);
   const title = useFieldDraft(trip?.title, (v) => actions.updateTrip({ title: v }));
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  /* Only the owner may delete — the rules say so too, so a viewer or editor
+     pressing this would just collect a permission error. On success the store
+     moves to the trip list and this screen unmounts; on failure the toast
+     explains and the trip stays where it was. */
+  const removeTrip = async () => {
+    setDeleting(true);
+    const ok = await actions.deleteTrip();
+    if (!ok) { setDeleting(false); setConfirmDelete(false); }
+  };
 
   if (!trip) {
     return (
@@ -39,9 +52,36 @@ export default function Trip() {
 
   return (
     <div className="st-page" style={{ paddingTop: 24 }}>
-      <button type="button" className="btn btn-ghost" style={{ marginLeft: -10 }} onClick={() => go('trips')}>
-        <ChevronLeft width="15" height="15" />Tất cả chuyến đi
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-ghost" style={{ marginLeft: -10 }} onClick={() => go('trips')}>
+          <ChevronLeft width="15" height="15" />Tất cả chuyến đi
+        </button>
+        <span style={{ flex: 1 }} />
+        {role === 'owner' && !confirmDelete && (
+          <button type="button" className="btn btn-ghost st-danger" style={{ fontSize: 13 }}
+            onClick={() => setConfirmDelete(true)}>
+            Xoá chuyến đi
+          </button>
+        )}
+      </div>
+
+      {/* a whole trip is a lot to lose on a mis-click, so the confirmation
+          names what goes with it rather than just asking "are you sure?" */}
+      {role === 'owner' && confirmDelete && (
+        <div className="st-hint" role="alert" style={{ marginTop: 12 }}>
+          <span>
+            Xoá <b>{trip.title}</b> là mất toàn bộ lịch trình, khoản chi và danh sách
+            thành viên của chuyến này. Không hoàn tác được.
+          </span>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn btn-ghost st-danger" onClick={removeTrip} disabled={deleting}>
+            {deleting ? 'Đang xoá…' : 'Xoá hẳn'}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+            Giữ lại
+          </button>
+        </div>
+      )}
 
       <header className="st-hero st-rise st-reveal">
         <Photo src={photo(trip.seed, 1800, 800)} alt={trip.alt} />

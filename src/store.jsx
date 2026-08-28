@@ -5,7 +5,7 @@ import { firebaseEnabled, refreshUser, repo, subscribeAuth } from './backend/ind
 const PREF_KEY = 'smarttrip-prefs';
 
 const defaultState = {
-  screen: 'login',           // login | trips | trip | ai
+  screen: 'login',           // login | trips | trip | ai | profile
   auth: 'in',                // login screen: in | up
   showEnglish: true,
 
@@ -175,7 +175,22 @@ export function AppProvider({ children }) {
         return id;
       },
       updateTrip: (fields) => onTrip('cập nhật chuyến đi', (id) => repo.updateTrip(id, fields)),
-      deleteTrip: () => onTrip('xoá chuyến đi', (id) => repo.deleteTrip(id)),
+
+      /* Navigates on the way out, the way createTrip navigates on the way in:
+         the screen it was deleted from no longer has anything to show. The
+         flag matters because run() answers null for a failure, and a bare
+         `await repo.deleteTrip()` answers undefined for a success. */
+      deleteTrip: async () => {
+        const ok = await onTrip('xoá chuyến đi', async (id) => {
+          await repo.deleteTrip(id);
+          return true;
+        });
+        if (ok === true) {
+          go('trips', { activeTripId: null, focusIdx: -1 });
+          notify('Đã xoá chuyến đi', 'neutral');
+        }
+        return ok === true;
+      },
 
       addDay: (day) => onTrip('thêm ngày', (id) => repo.addDay(id, day)),
       updateDay: (dayId, fields) => onTrip('sửa ngày', (id) => repo.updateDay(id, dayId, fields)),
