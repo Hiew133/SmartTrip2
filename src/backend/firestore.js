@@ -271,6 +271,29 @@ export async function claimInvites(user) {
   return claimed;
 }
 
+const sameList = (a = [], b = []) => a.length === b.length && a.every((x) => b.includes(x));
+
+/* pendingEmails was added after some trips had already been written, so their
+   invitations were invisible to claimInvites. This repairs the mirrors on any
+   trip the caller owns, once per sign-in. Idempotent: it only writes when the
+   stored copy actually differs from what members implies. */
+export async function repairMirrors(user) {
+  const mine = await getDocs(query(tripsRef(), where('memberIds', 'array-contains', user.uid)));
+  let fixed = 0;
+
+  for (const found of mine.docs) {
+    const data = found.data();
+    if (data.roles?.[user.uid] !== 'owner') continue;      // only the owner may rewrite these
+    const want = derive(data.members ?? []);
+    if (sameList(want.pendingEmails, data.pendingEmails)
+      && sameList(want.memberIds, data.memberIds)) continue;
+    // eslint-disable-next-line no-await-in-loop -- a handful of trips at most
+    await updateDoc(tripRef(found.id), { ...data, ...want });
+    fixed += 1;
+  }
+  return fixed;
+}
+
 export async function setMemberRole(tripId, memberId, role) {
   await runTransaction(db(), async (tx) => {
     const snap = await tx.get(tripRef(tripId));

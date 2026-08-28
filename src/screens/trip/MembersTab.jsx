@@ -5,6 +5,24 @@ import { Avatar, Check, Seg } from '../../components/ui.jsx';
 
 const ROLE_LABEL = { edit: 'Sửa', view: 'Xem' };
 
+/* SmartTrip cannot send mail on its own — that needs Cloud Functions, which
+   need the Blaze plan. This opens a draft in the inviter's own mail client
+   instead: same result, nothing to deploy, and they see what goes out. */
+function inviteMailto({ trip, member, from, link }) {
+  const subject = `Mời bạn cùng lên lịch chuyến "${trip.title}" trên SmartTrip`;
+  const body = [
+    `Chào ${member.name},`,
+    '',
+    `${from} vừa mời bạn vào chuyến đi "${trip.title}" trên SmartTrip.`,
+    '',
+    `Mở: ${link}`,
+    '',
+    `Đăng nhập bằng chính địa chỉ ${member.email} là chuyến đi tự hiện trong danh sách của bạn.`,
+    'Nếu đăng ký bằng email và mật khẩu thì nhớ bấm liên kết xác minh trước.',
+  ].join('\n');
+  return `mailto:${encodeURIComponent(member.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 export default function MembersTab({ trip, role }) {
   const { state, patch, notify, actions } = useApp();
   const copyTimer = useRef(null);
@@ -30,7 +48,7 @@ export default function MembersTab({ trip, role }) {
     const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     actions.addMember({ id: uid('mem'), name, email, role: state.inviteRole, pending: true, uid: null });
     patch({ inviteEmail: '' });
-    notify(`Đã gửi lời mời tới ${email}`, 'sage');
+    notify(`Đã thêm ${email} — bấm "Gửi email báo" để nhắn cho họ`, 'sage');
   };
 
   /* writeText returns a promise, so the old try/catch never saw a rejection:
@@ -75,6 +93,11 @@ export default function MembersTab({ trip, role }) {
             <span style={{ flex: 1 }} />
             {m.role === 'owner' && <span className="tag tag-accent">Chủ chuyến đi</span>}
             {m.pending && <span className="tag tag-accent-2">Chờ phản hồi</span>}
+            {m.pending && isOwner && (
+              <a className="st-linkbtn" href={inviteMailto({
+                trip, member: m, from: state.user?.name || 'Một người bạn', link: shareLink,
+              })}>Gửi email báo</a>
+            )}
             {m.role !== 'owner' && !m.pending && (isOwner ? (
               <Seg ariaLabel={`Quyền của ${m.name}`}
                 options={['edit', 'view'].map((r) => ({
@@ -121,10 +144,11 @@ export default function MembersTab({ trip, role }) {
         {state.copyErr && <span className="st-error" id="st-link-err">{state.copyErr}</span>}
       </div>
       <p className="st-fineprint">
-        Người được mời vào trạng thái "Chờ phản hồi" cho tới lần đăng nhập đầu tiên bằng
-        chính email đó — lúc đó chuyến đi tự hiện trong danh sách của họ. SmartTrip chưa tự
-        gửi email, nên bạn vẫn phải báo họ một tiếng. Đăng nhập bằng Google là nhận được
-        ngay; đăng ký bằng email và mật khẩu thì phải bấm liên kết xác minh trước.
+        Người được mời ở trạng thái "Chờ phản hồi" cho tới lần đăng nhập đầu tiên bằng
+        chính email đó — lúc đó chuyến đi tự hiện trong danh sách của họ. SmartTrip không
+        tự gửi mail; nút <b>Gửi email báo</b> mở sẵn một thư nháp trong ứng dụng mail của
+        bạn để bạn bấm gửi. Đăng nhập bằng Google là vào được ngay; đăng ký bằng email và
+        mật khẩu thì phải bấm liên kết xác minh trước.
       </p>
     </section>
   );

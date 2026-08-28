@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES, first, newTrip } from './data.js';
-import { firebaseEnabled, repo, subscribeAuth } from './backend/index.js';
+import { firebaseEnabled, refreshUser, repo, subscribeAuth } from './backend/index.js';
 
 const PREF_KEY = 'smarttrip-prefs';
 
@@ -85,11 +85,13 @@ export function AppProvider({ children }) {
   /* ── live trip data ──────────────────────────────────────────────────── */
   const uidKey = state.user?.uid ?? null;
 
-  /* An invitation only carries an email until the invited person signs in.
-     Seat them the moment they do, so the trip simply appears in their list. */
+  /* Two housekeeping jobs at sign-in: seat this person in any trip that was
+     waiting for their email, and repair trips written before pendingEmails
+     existed so their invitations become findable at all. */
   useEffect(() => {
     if (!uidKey) return;
     const me = stateRef.current.user;
+    repo.repairMirrors(me).catch((err) => console.error('SmartTrip · vá dữ liệu chuyến đi:', err));
     repo.claimInvites(me)
       .then((n) => {
         if (n > 0) {
@@ -182,6 +184,21 @@ export function AppProvider({ children }) {
       addExpense: (expense) => onTrip('thêm khoản chi', (id) => repo.addExpense(id, expense)),
       updateExpense: (expId, fields) => onTrip('sửa khoản chi', (id) => repo.updateExpense(id, expId, fields)),
       removeExpense: (expId) => onTrip('xoá khoản chi', (id) => repo.removeExpense(id, expId)),
+
+      /* Reload the session after the person clicks the verification link in
+         their mail client — nothing else tells this tab it happened — and pick
+         up any invitation that was waiting on it. */
+      refreshUser: async () => {
+        const before = stateRef.current.user;
+        const fresh = await run('kiểm tra xác minh email', () => refreshUser());
+        if (!fresh) return false;
+        setState((s) => ({ ...s, user: fresh }));
+        if (fresh.emailVerified && !before?.emailVerified) {
+          const n = await run('nhận lời mời', () => repo.claimInvites(fresh));
+          notify(n > 0 ? `Đã xác minh — vào được ${n} chuyến đi bạn được mời` : 'Đã xác minh email.', 'sage');
+        }
+        return fresh.emailVerified;
+      },
 
       setSettled: (settled) => onTrip('đánh dấu đã trả', (id) => repo.setSettled(id, settled)),
       addMember: (member) => onTrip('gửi lời mời', (id) => repo.addMember(id, member)),

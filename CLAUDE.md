@@ -209,6 +209,19 @@ Không dùng Cloud Function (Functions đòi Blaze). Thay vào đó trip có th�
    `roles` chỉ đổi đúng khoá của họ và không được là `owner`, và mọi trường khác của
    chuyến đi giữ nguyên.
 
+Ba chi tiết đi kèm:
+
+- **Gửi email báo** trong tab Thành viên mở một thư nháp `mailto:` trong ứng dụng mail
+  của người mời, điền sẵn tiêu đề, liên kết chuyến đi và hướng dẫn. SmartTrip không tự
+  gửi mail — làm vậy cần Cloud Function, mà Functions đòi gói Blaze. Cách này cho kết
+  quả tương đương, không phải deploy gì, và người mời thấy rõ mình gửi cái gì.
+- **`repairMirrors()`** chạy một lần sau đăng nhập, vá những chuyến đi ghi trước khi có
+  `pendingEmails` — không có nó thì lời mời cũ vĩnh viễn không ai nhận được. Chỉ ghi khi
+  bản sao thật sự lệch, và chỉ trên chuyến mình làm chủ.
+- **`refreshUser()`** cho nút "Tôi đã xác minh xong". `emailVerified` nằm trong phiên
+  đăng nhập, nên bấm link trong hộp thư không làm tab này biết gì cho tới khi
+  `user.reload()`. Xác minh xong thì nó nhận luôn lời mời đang chờ.
+
 **Bắt buộc email đã xác minh.** Nếu không thì ai cũng đăng ký bằng email người khác rồi
 đi thẳng vào chuyến của họ. Đăng nhập Google là xác minh sẵn; đăng ký bằng mật khẩu thì
 `signUpWithEmail` gửi link xác minh, và `claimInvites` **bỏ qua luôn truy vấn** khi

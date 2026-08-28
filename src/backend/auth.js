@@ -103,6 +103,17 @@ export async function signUpWithEmail(name, email, password) {
   return shape({ ...cred.user, displayName: name || cred.user.displayName });
 }
 
+/* emailVerified is baked into the session at sign-in, so clicking the link in
+   a mail client changes nothing here until the user object is reloaded. This
+   is what the "Tôi đã xác minh xong" button calls. */
+export async function refreshUser() {
+  if (!firebaseEnabled) return demoUser;
+  const u = auth().currentUser;
+  if (!u) return null;
+  await u.reload();
+  return shape(auth().currentUser);
+}
+
 /** Send the confirmation link again, for an account that never clicked it. */
 export async function resendVerification() {
   if (!firebaseEnabled) return;

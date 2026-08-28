@@ -231,8 +231,8 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 
 ## Còn nợ
 
-- **Chưa gửi email mời.** Người được mời tự vào được khi đăng nhập bằng đúng email đó,
-  nhưng SmartTrip không báo cho họ — người mời phải tự nhắn.
+- **SmartTrip không tự gửi email mời** — nút "Gửi email báo" mở thư nháp trong ứng dụng
+  mail của người mời để họ bấm gửi. Gửi tự động cần Cloud Function, tức gói Blaze.
 - Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app hiện chưa có router.
 - Chưa có xoá thành viên và chưa có luồng huỷ lời mời.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, và chưa có cách sắp xếp bằng bàn phím.

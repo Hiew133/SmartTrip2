@@ -80,11 +80,16 @@ export default function Trips() {
   const resend = async () => {
     try {
       await resendVerification();
-      setSent('Đã gửi lại. Kiểm tra hộp thư rồi đăng nhập lại.');
+      setSent('Đã gửi. Mở hộp thư, bấm liên kết, rồi quay lại đây bấm "Tôi đã xác minh xong".');
     } catch (err) {
       console.error('SmartTrip · gửi lại email xác minh:', err);
       setSent('Chưa gửi được. Thử lại sau một lát.');
     }
+  };
+
+  const recheck = async () => {
+    const ok = await actions.refreshUser();
+    if (!ok) setSent('Vẫn chưa thấy xác minh. Bấm liên kết trong email rồi thử lại.');
   };
 
   const open = (id) => go('trip', { activeTripId: id, tripTab: 'itin', day: 0, focusIdx: -1 });
@@ -143,9 +148,10 @@ export default function Trips() {
             Email <b>{state.user.email}</b> chưa xác minh — bạn sẽ không nhận được lời mời
             vào chuyến đi của người khác.
           </span>
-          {sent
-            ? <span className="text-muted">{sent}</span>
-            : <button type="button" className="btn btn-ghost" onClick={resend}>Gửi lại email xác minh</button>}
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn btn-ghost" onClick={resend}>Gửi lại email</button>
+          <button type="button" className="btn btn-ghost" onClick={recheck}>Tôi đã xác minh xong</button>
+          {sent && <span className="text-muted" style={{ flexBasis: '100%' }}>{sent}</span>}
         </div>
       )}
 
