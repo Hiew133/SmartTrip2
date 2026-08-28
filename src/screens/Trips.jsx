@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp, useTripsReady } from '../store.jsx';
+import { firebaseEnabled, resendVerification } from '../backend/index.js';
 import {
   SEED_TRIPS, STATUS_LABEL, daysUntil, fmt, formatRange, photo, stopCount, tripStatus, tripTotal,
 } from '../data.js';
@@ -69,6 +70,22 @@ export default function Trips() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('Tất cả');
   const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState('');
+
+  /* Without a verified address the rules will not let this account claim an
+     invitation, and the query is skipped rather than failing every sign-in.
+     Say so here, where it can actually be fixed. */
+  const unverified = firebaseEnabled && state.user && !state.user.emailVerified;
+
+  const resend = async () => {
+    try {
+      await resendVerification();
+      setSent('Đã gửi lại. Kiểm tra hộp thư rồi đăng nhập lại.');
+    } catch (err) {
+      console.error('SmartTrip · gửi lại email xác minh:', err);
+      setSent('Chưa gửi được. Thử lại sau một lát.');
+    }
+  };
 
   const open = (id) => go('trip', { activeTripId: id, tripTab: 'itin', day: 0, focusIdx: -1 });
 
@@ -119,6 +136,18 @@ export default function Trips() {
       </header>
 
       {state.dataError && <p className="st-error" style={{ marginTop: 20 }}>{state.dataError}</p>}
+
+      {unverified && (
+        <div className="st-hint" style={{ marginTop: 20 }} role="status">
+          <span>
+            Email <b>{state.user.email}</b> chưa xác minh — bạn sẽ không nhận được lời mời
+            vào chuyến đi của người khác.
+          </span>
+          {sent
+            ? <span className="text-muted">{sent}</span>
+            : <button type="button" className="btn btn-ghost" onClick={resend}>Gửi lại email xác minh</button>}
+        </div>
+      )}
 
       <div className="st-toolbar st-reveal">
         <label className="st-search">

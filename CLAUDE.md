@@ -12,8 +12,11 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm run test:rules # kiểm thử Security Rules trên emulator (xem mục "Đang vướng")
+npm run test:rules # kiểm thử Security Rules trên emulator — 20 ca
 ```
+
+`firebase emulators` đòi **JDK 21+**. Nếu máy chưa có:
+`winget install EclipseAdoptium.Temurin.21.JDK`, rồi trỏ `JAVA_HOME` vào nó khi chạy test.
 
 ---
 
@@ -83,7 +86,8 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
-| Test Security Rules | ❌ **chưa từng chạy** (xem "Đang vướng") |
+| Test Security Rules | ✅ 20/20 pass trên emulator |
+| Nhận lời mời | ✅ tự nhận ghế khi đăng nhập (cần email đã xác minh) |
 
 Đã chạy thật trên project, không phải chỉ build: đăng nhập, đọc chuyến đi, `setDoc`,
 batch ghi ngày, `updateDoc` khoản chi, `runTransaction` mời thành viên, và Gemini sinh
@@ -190,6 +194,27 @@ với người thật.
 
 ---
 
+## Nhận lời mời — cách nó chạy
+
+Không dùng Cloud Function (Functions đòi Blaze). Thay vào đó trip có thêm bản sao thứ ba
+`pendingEmails: [email]`, và người được mời **tự xếp ghế cho mình**:
+
+1. Chủ chuyến mời → `members` thêm một người `pending: true, uid: null`, và
+   `derive()` đưa email họ vào `pendingEmails`.
+2. Người đó đăng nhập → `claimInvites()` truy vấn
+   `where('pendingEmails','array-contains', email)`, rồi transaction điền `uid` vào ghế
+   của chính mình.
+3. Rules cho phép đúng một thao tác đó và không gì khác — `claimsOwnSeat()` bắt buộc
+   `memberIds` chỉ thêm đúng uid người gọi, `pendingEmails` chỉ bớt đúng email người gọi,
+   `roles` chỉ đổi đúng khoá của họ và không được là `owner`, và mọi trường khác của
+   chuyến đi giữ nguyên.
+
+**Bắt buộc email đã xác minh.** Nếu không thì ai cũng đăng ký bằng email người khác rồi
+đi thẳng vào chuyến của họ. Đăng nhập Google là xác minh sẵn; đăng ký bằng mật khẩu thì
+`signUpWithEmail` gửi link xác minh, và `claimInvites` **bỏ qua luôn truy vấn** khi
+`emailVerified` false — nếu không nó sẽ ném permission-denied mỗi lần đăng nhập. Màn
+Chuyến đi hiện một dòng nhắc kèm nút gửi lại link.
+
 ## Những chỗ đã sập — đừng dẫm lại
 
 **`firebase/ai` phải nằm trong `optimizeDeps.include`.** Nó chỉ được `import()` động nên
@@ -225,6 +250,11 @@ một chuyến vừa tạo có thể lỗi ngay lúc gắn (rule đọc cha, ser
 trả dữ liệu cache như một snapshot thành công. Trước đây nó xoá mất `dataError` và app
 hiện dữ liệu cũ như không có chuyện gì. Giờ chỉ xoá `dataError` khi
 `snap.metadata.fromCache` là false.
+
+**Rules cho truy vấn danh sách khác rules cho đọc một document.** Firestore xét `list`
+theo **chính truy vấn**, không theo từng document nó sẽ trả về. Bộ test lúc đầu chỉ dùng
+`getDoc` nên pass hết, trong khi app thật dùng `getDocs(query(...))` và bị chặn. Thêm
+tính năng đọc nào thì test đúng cái lời gọi mà client dùng.
 
 **Dev server cache module cũ sau khi đổi export.** Thêm export mới vào một file đang
 được import mà HMR báo `does not provide an export named ...` thì restart dev server,

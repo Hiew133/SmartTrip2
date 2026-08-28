@@ -1,5 +1,5 @@
 import {
-  collection, deleteDoc, doc, onSnapshot, query, runTransaction,
+  collection, deleteDoc, doc, getDocs, onSnapshot, query, runTransaction,
   serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
@@ -24,14 +24,18 @@ const dayRef = (tripId, dayId) => doc(db(), 'trips', tripId, 'days', dayId);
 const expensesRef = (tripId) => collection(db(), 'trips', tripId, 'expenses');
 const expenseRef = (tripId, id) => doc(db(), 'trips', tripId, 'expenses', id);
 
-/* memberIds and roles are denormalised off `members` purely so the security
-   rules can answer "may this uid read/write?" without reading another
-   document. They must be rebuilt every time members change. */
+/* memberIds, roles and pendingEmails are denormalised off `members` purely so
+   the security rules can answer "may this uid read/write?" without reading
+   another document. They must be rebuilt every time members change.
+
+   pendingEmails is what lets an invited person find the trip waiting for them
+   before they are a member of it — see claimInvites below. */
 const derive = (members) => {
   const seated = members.filter((m) => m.uid);
   return {
     memberIds: seated.map((m) => m.uid),
     roles: Object.fromEntries(seated.map((m) => [m.uid, m.role])),
+    pendingEmails: members.filter((m) => !m.uid && m.email).map((m) => m.email.toLowerCase()),
   };
 };
 
@@ -226,6 +230,45 @@ export async function addMember(tripId, member) {
     const next = [...members, member];
     tx.update(tripRef(tripId), { members: next, ...derive(next), updatedAt: serverTimestamp() });
   });
+}
+
+/* An invitation only records an email — the invited person has no uid until
+   they sign in. This runs right after sign-in and seats them: it finds every
+   trip whose pendingEmails contains their address and fills in their uid.
+   The rules pin this write down so it can only ever seat the caller.
+
+   Firebase Auth must consider the address verified, which Google sign-in gives
+   for free; an email/password account has to confirm the link first. */
+export async function claimInvites(user) {
+  const email = (user.email || '').toLowerCase();
+  if (!email) return 0;
+  /* The rules require a verified address, so for an unverified one this query
+     is denied every single time. Skipping it keeps a red error out of the
+     console on every sign-in; Trips shows the person what to do instead. */
+  if (!user.emailVerified) return 0;
+
+  const waiting = await getDocs(query(tripsRef(), where('pendingEmails', 'array-contains', email)));
+  let claimed = 0;
+
+  for (const found of waiting.docs) {
+    // eslint-disable-next-line no-await-in-loop -- a handful of trips at most
+    const ok = await runTransaction(db(), async (tx) => {
+      const snap = await tx.get(tripRef(found.id));
+      if (!snap.exists()) return false;
+      const members = snap.data().members ?? [];
+      let hit = false;
+      const next = members.map((m) => {
+        if (hit || m.uid || (m.email || '').toLowerCase() !== email) return m;
+        hit = true;
+        return { ...m, uid: user.uid, pending: false, name: m.name || user.name };
+      });
+      if (!hit) return false;
+      tx.update(tripRef(found.id), { members: next, ...derive(next) });
+      return true;
+    });
+    if (ok) claimed += 1;
+  }
+  return claimed;
 }
 
 export async function setMemberRole(tripId, memberId, role) {

@@ -112,11 +112,8 @@ Có sẵn bộ test chạy trên emulator:
 npm run test:rules
 ```
 
-⚠️ Bộ test này **chưa từng chạy được**: `firebase emulators` đòi JDK 21, máy đang có
-JDK 17. Rules hiện đã deploy và đã xác nhận chặn được truy cập vô danh (đọc `trips/`
-không kèm token trả về HTTP 403), nhưng các nhánh còn lại — editor tự nâng quyền,
-editor tự thêm ghế thành viên — mới chỉ đúng trên giấy. Cài JDK 21 rồi chạy lệnh trên
-trước khi mở app cho người ngoài dùng.
+20 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền được
+không, và toàn bộ luồng nhận lời mời — kể cả các trường hợp cố tình lách.
 
 ### 4. Bật Firebase AI Logic (Trợ lý AI)
 
@@ -234,9 +231,8 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 
 ## Còn nợ
 
-- **Lời mời mới chỉ ghi vào chuyến đi**, chưa gửi email và người được mời chưa tự nhận được
-  quyền khi đăng nhập. Cần một Cloud Function đối chiếu email với tài khoản rồi điền `uid`
-  vào chỗ ngồi tương ứng — chừng nào chưa có thì họ vẫn chưa đọc được chuyến đi.
+- **Chưa gửi email mời.** Người được mời tự vào được khi đăng nhập bằng đúng email đó,
+  nhưng SmartTrip không báo cho họ — người mời phải tự nhắn.
 - Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app hiện chưa có router.
 - Chưa có xoá thành viên và chưa có luồng huỷ lời mời.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, và chưa có cách sắp xếp bằng bàn phím.

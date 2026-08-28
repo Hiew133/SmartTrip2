@@ -1,6 +1,7 @@
 import {
   GoogleAuthProvider, createUserWithEmailAndPassword, onAuthStateChanged,
-  signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile,
+  sendEmailVerification, signInWithEmailAndPassword, signInWithPopup, signOut,
+  updateProfile,
 } from 'firebase/auth';
 import { firebaseEnabled } from './config.js';
 import { auth } from './firebase.js';
@@ -13,6 +14,9 @@ const shape = (u) => (u ? {
   name: u.displayName || (u.email ? u.email.split('@')[0] : 'Bạn'),
   email: u.email || '',
   photoURL: u.photoURL || null,
+  // claiming an invitation requires a verified address; Google sign-in is
+  // verified already, email/password has to confirm the link first
+  emailVerified: u.emailVerified === true,
 } : null);
 
 /* Firebase surfaces failures as codes; the screens want a sentence in Vietnamese. */
@@ -53,7 +57,10 @@ function setDemoUser(u) {
 }
 
 const demoSignIn = (email, name) => {
-  setDemoUser({ uid: 'demo-user', name: name || (email ? email.split('@')[0] : 'Minh Trần'), email: email || 'demo@smarttrip.vn', photoURL: null });
+  setDemoUser({
+    uid: 'demo-user', name: name || (email ? email.split('@')[0] : 'Minh Trần'),
+    email: email || 'demo@smarttrip.vn', photoURL: null, emailVerified: true,
+  });
   return Promise.resolve(demoUser);
 };
 
@@ -85,7 +92,22 @@ export async function signUpWithEmail(name, email, password) {
   if (!firebaseEnabled) return demoSignIn(email, name);
   const cred = await createUserWithEmailAndPassword(auth(), email, password);
   if (name) await updateProfile(cred.user, { displayName: name });
+  /* Claiming an invitation needs a verified address — the rules insist on it,
+     otherwise anyone could sign up as someone else and walk into their trip.
+     Google sign-in arrives verified; this path has to ask. */
+  try {
+    await sendEmailVerification(cred.user);
+  } catch (err) {
+    console.error('SmartTrip · gửi email xác minh:', err);
+  }
   return shape({ ...cred.user, displayName: name || cred.user.displayName });
+}
+
+/** Send the confirmation link again, for an account that never clicked it. */
+export async function resendVerification() {
+  if (!firebaseEnabled) return;
+  const u = auth().currentUser;
+  if (u && !u.emailVerified) await sendEmailVerification(u);
 }
 
 export async function signOutUser() {

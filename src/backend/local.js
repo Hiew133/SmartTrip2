@@ -96,6 +96,11 @@ export async function addMember(tripId, member) {
   edit(tripId, (t) => ({ ...t, members: [...t.members, member] }));
 }
 
+/* Demo mode has no real identities, so there is nothing to claim. */
+export async function claimInvites() {
+  return 0;
+}
+
 export async function setMemberRole(tripId, memberId, role) {
   edit(tripId, (t) => ({
     ...t, members: t.members.map((m) => (m.id === memberId ? { ...m, role } : m)),

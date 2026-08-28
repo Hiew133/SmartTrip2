@@ -3,7 +3,9 @@ import { after, before, describe, it } from 'node:test';
 import {
   assertFails, assertSucceeds, initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
+} from 'firebase/firestore';
 
 /* Rules decide who can read and write real money data, so they get tested
    against the emulator rather than eyeballed. Run with:
@@ -15,6 +17,8 @@ const OWNER = 'uid-owner';
 const EDITOR = 'uid-editor';
 const VIEWER = 'uid-viewer';
 const STRANGER = 'uid-stranger';
+const INVITEE = 'uid-invitee';
+const INVITEE_EMAIL = 'moi@x.vn';
 
 const tripData = (over = {}) => ({
   title: 'Đà Nẵng – Hội An',
@@ -22,9 +26,11 @@ const tripData = (over = {}) => ({
     { id: 'm1', name: 'Minh', email: 'minh@x.vn', role: 'owner', pending: false, uid: OWNER },
     { id: 'm2', name: 'Lan', email: 'lan@x.vn', role: 'edit', pending: false, uid: EDITOR },
     { id: 'm3', name: 'An', email: 'an@x.vn', role: 'view', pending: false, uid: VIEWER },
+    { id: 'm4', name: 'Moi', email: INVITEE_EMAIL, role: 'edit', pending: true, uid: null },
   ],
   memberIds: [OWNER, EDITOR, VIEWER],
   roles: { [OWNER]: 'owner', [EDITOR]: 'edit', [VIEWER]: 'view' },
+  pendingEmails: [INVITEE_EMAIL],
   ownerId: OWNER,
   plan: 16000000,
   settled: {},
@@ -33,6 +39,24 @@ const tripData = (over = {}) => ({
 });
 
 const as = (uid) => env.authenticatedContext(uid).firestore();
+/** Signed in with a token that carries an email, verified or not. */
+const asEmail = (uid, email, verified = true) =>
+  env.authenticatedContext(uid, { email, email_verified: verified }).firestore();
+
+/** What the client writes when it seats itself: uid filled in, email dropped. */
+const claimed = (over = {}) => {
+  const base = tripData();
+  const members = base.members.map((m) => (m.email === INVITEE_EMAIL
+    ? { ...m, uid: INVITEE, pending: false } : m));
+  return {
+    ...base,
+    members,
+    memberIds: [OWNER, EDITOR, VIEWER, INVITEE],
+    roles: { [OWNER]: 'owner', [EDITOR]: 'edit', [VIEWER]: 'view', [INVITEE]: 'edit' },
+    pendingEmails: [],
+    ...over,
+  };
+};
 const tripRef = (fs, id = 'trip1') => doc(fs, 'trips', id);
 const expenseRef = (fs, id = 'e1') => doc(fs, 'trips', 'trip1', 'expenses', id);
 const dayRef = (fs, id = 'd1') => doc(fs, 'trips', 'trip1', 'days', id);
@@ -122,6 +146,75 @@ describe('firestore.rules', () => {
     await assertSucceeds(setDoc(tripRef(as(OWNER), 'new1'), mine));
     // cannot create a trip that hands someone else the keys
     await assertFails(setDoc(tripRef(as(EDITOR), 'new2'), mine));
+  });
+
+  /* ── claiming an invitation ─────────────────────────────────────────── */
+
+  it('an invited person can read the trip waiting for them', async () => {
+    await seed();
+    await assertSucceeds(getDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL))));
+  });
+
+  /* The client does not read one document, it runs this query — and Firestore
+     judges a list against the query itself, not the documents it would return.
+     The single-document tests all passed while this failed in the real app. */
+  it('an invited person can find their trips by query', async () => {
+    await seed();
+    const q = (fs, email) => query(collection(fs, 'trips'), where('pendingEmails', 'array-contains', email));
+    await assertSucceeds(getDocs(q(asEmail(INVITEE, INVITEE_EMAIL), INVITEE_EMAIL)));
+    // and the same query for somebody else's address is refused
+    await assertFails(getDocs(q(asEmail(INVITEE, INVITEE_EMAIL), 'nguoikhac@x.vn')));
+  });
+
+  it('members still find their trips by query', async () => {
+    await seed();
+    const q = (fs, uid) => query(collection(fs, 'trips'), where('memberIds', 'array-contains', uid));
+    await assertSucceeds(getDocs(q(as(VIEWER), VIEWER)));
+    await assertFails(getDocs(q(as(STRANGER), VIEWER)));
+  });
+
+  it('an unverified address cannot read or claim', async () => {
+    await seed();
+    await assertFails(getDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL, false))));
+    await assertFails(updateDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL, false)), claimed()));
+  });
+
+  it('an invited person can seat themselves', async () => {
+    await seed();
+    await assertSucceeds(updateDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL)), claimed()));
+  });
+
+  it('claiming cannot hand the claimer a role they were not offered', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL)), claimed({
+      roles: { [OWNER]: 'owner', [EDITOR]: 'edit', [VIEWER]: 'view', [INVITEE]: 'owner' },
+    })));
+  });
+
+  it('claiming cannot seat somebody else at the same time', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL)), claimed({
+      memberIds: [OWNER, EDITOR, VIEWER, INVITEE, STRANGER],
+      roles: { [OWNER]: 'owner', [EDITOR]: 'edit', [VIEWER]: 'view', [INVITEE]: 'edit', [STRANGER]: 'edit' },
+    })));
+  });
+
+  it('claiming cannot smuggle in an edit to the trip itself', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL)), claimed({ plan: 1 })));
+    await assertFails(updateDoc(tripRef(asEmail(INVITEE, INVITEE_EMAIL)), claimed({ title: 'Cướp' })));
+  });
+
+  it('someone else cannot claim an invitation addressed to another email', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(asEmail(STRANGER, 'nguoila@x.vn')), claimed()));
+    await assertFails(getDoc(tripRef(asEmail(STRANGER, 'nguoila@x.vn'))));
+  });
+
+  it('an invited person still cannot touch days or expenses before claiming', async () => {
+    await seed();
+    await assertFails(getDoc(dayRef(asEmail(INVITEE, INVITEE_EMAIL))));
+    await assertFails(getDoc(expenseRef(asEmail(INVITEE, INVITEE_EMAIL))));
   });
 
   it('nothing outside /trips is reachable', async () => {

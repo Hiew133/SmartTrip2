@@ -84,6 +84,24 @@ export function AppProvider({ children }) {
 
   /* ── live trip data ──────────────────────────────────────────────────── */
   const uidKey = state.user?.uid ?? null;
+
+  /* An invitation only carries an email until the invited person signs in.
+     Seat them the moment they do, so the trip simply appears in their list. */
+  useEffect(() => {
+    if (!uidKey) return;
+    const me = stateRef.current.user;
+    repo.claimInvites(me)
+      .then((n) => {
+        if (n > 0) {
+          setState((s) => ({
+            ...s,
+            toast: { msg: `Đã vào ${n} chuyến đi bạn được mời`, tone: 'sage' },
+          }));
+        }
+      })
+      .catch((err) => console.error('SmartTrip · nhận lời mời:', err));
+  }, [uidKey]);
+
   useEffect(() => {
     if (!uidKey) return undefined;
     return repo.subscribeTrips(

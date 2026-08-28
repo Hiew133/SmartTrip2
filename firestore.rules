@@ -2,14 +2,16 @@ rules_version = '2';
 
 /* SmartTrip — Firestore Security Rules
 
-   Access is decided entirely from two mirrors kept on the trip document:
-     memberIds : [uid]            who may read
-     roles     : { uid: role }    what each of them may do
+   Access is decided entirely from three mirrors kept on the trip document:
+     memberIds     : [uid]           who may read
+     roles         : { uid: role }   what each of them may do
+     pendingEmails : [email]         invited, not yet signed in and seated
 
    They are denormalised off `members` so a rule never has to read a second
    document. The catch is that anyone who can write the trip could rewrite
    their own role, so updates below explicitly forbid touching those fields
-   unless the caller is the owner. */
+   unless the caller is the owner — or is claiming their own invitation, which
+   is allowed but pinned down field by field. */
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -21,6 +23,16 @@ service cloud.firestore {
       function signedIn() { return request.auth != null; }
 
       function isMember() { return signedIn() && uid() in trip().memberIds; }
+      function myEmail()  { return request.auth.token.email.lower(); }
+
+      /* An invited person is not a member yet, so they need read access to find
+         the trip that is waiting for them. Only a verified address counts —
+         otherwise anyone could sign up as someone else and walk in. */
+      function isInvited() {
+        return signedIn()
+            && request.auth.token.get('email_verified', false) == true
+            && myEmail() in resource.data.get('pendingEmails', []);
+      }
       function role()     { return trip().roles[uid()]; }
       function isOwner()  { return isMember() && role() == 'owner'; }
       function isEditor() { return isMember() && (role() == 'owner' || role() == 'edit'); }
@@ -40,7 +52,23 @@ service cloud.firestore {
             && incoming().memberIds.size() <= 50;
       }
 
-      allow read: if isMember();
+      /* Claiming an invitation: the one write a non-member may make. It has to
+         add exactly the caller's own uid, remove exactly the caller's own
+         email, and leave every other field of the trip alone — so it cannot be
+         used to seat somebody else, hand yourself 'owner', or edit the trip. */
+      function claimsOwnSeat() {
+        return isInvited()
+            && incoming().diff(trip()).affectedKeys()
+                 .hasOnly(['members', 'memberIds', 'roles', 'pendingEmails', 'updatedAt'])
+            && incoming().memberIds.toSet() == trip().memberIds.toSet().union([uid()].toSet())
+            && incoming().get('pendingEmails', []).toSet()
+                 == trip().get('pendingEmails', []).toSet().difference([myEmail()].toSet())
+            && incoming().roles.diff(trip().roles).affectedKeys().hasOnly([uid()])
+            && incoming().roles[uid()] in ['edit', 'view']
+            && incoming().members.size() == trip().members.size();
+      }
+
+      allow read: if isMember() || isInvited();
 
       // a new trip must start with its creator as the only seated member
       allow create: if signedIn()
@@ -50,7 +78,7 @@ service cloud.firestore {
                     && incoming().roles[uid()] == 'owner';
 
       allow update: if wellFormed()
-                    && (isOwner() || (isEditor() && accessUnchanged()));
+                    && (isOwner() || (isEditor() && accessUnchanged()) || claimsOwnSeat());
 
       allow delete: if isOwner();
 

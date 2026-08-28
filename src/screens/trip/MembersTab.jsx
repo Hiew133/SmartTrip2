@@ -121,8 +121,10 @@ export default function MembersTab({ trip, role }) {
         {state.copyErr && <span className="st-error" id="st-link-err">{state.copyErr}</span>}
       </div>
       <p className="st-fineprint">
-        Lời mời hiện mới ghi vào chuyến đi ở trạng thái "Chờ phản hồi" — chưa có email nào
-        được gửi đi và người được mời chưa tự nhận được quyền. Xem mục "Còn nợ" trong README.
+        Người được mời vào trạng thái "Chờ phản hồi" cho tới lần đăng nhập đầu tiên bằng
+        chính email đó — lúc đó chuyến đi tự hiện trong danh sách của họ. SmartTrip chưa tự
+        gửi email, nên bạn vẫn phải báo họ một tiếng. Đăng nhập bằng Google là nhận được
+        ngay; đăng ký bằng email và mật khẩu thì phải bấm liên kết xác minh trước.
       </p>
     </section>
   );
