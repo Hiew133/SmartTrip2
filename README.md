@@ -129,17 +129,27 @@ Firebase **từ chối phục vụ AI Logic cho project chưa enforce App Check*
 `403 ... you must enforce Firebase App Check`. Auth và Firestore vẫn chạy bình thường,
 chỉ Trợ lý AI bị khoá.
 
-1. **Build → App Check → Apps** → chọn app web `SmartTrip` → **reCAPTCHA v3** →
-   đăng ký, copy **site key**.
-2. Điền vào `.env.local`:
+1. Tạo cặp khoá reCAPTCHA **trước** — Firebase không tạo hộ. Vào
+   [google.com/recaptcha/admin/create](https://www.google.com/recaptcha/admin/create):
+   chọn **reCAPTCHA v3**, thêm domain `localhost` (và domain deploy nếu có).
+   Xong sẽ có **hai** khoá:
+
+   | Khoá | Đi đâu | Bí mật? |
+   |---|---|---|
+   | **Site key** | `.env.local` của dự án | Không — nó nằm sẵn trong mọi trang dùng reCAPTCHA |
+   | **Secret key** | Chỉ dán vào Firebase Console ở bước 2 | **Có** — không bao giờ đưa vào code hay `.env` |
+
+2. **Build → App Check → Apps** → chọn app web `SmartTrip` → **reCAPTCHA v3** →
+   dán **secret key** vào đó → Save.
+3. Điền **site key** vào `.env.local`:
    ```
    VITE_FIREBASE_APPCHECK_SITE_KEY=<site key>
    ```
    (Nếu bạn chọn reCAPTCHA Enterprise thì thêm `VITE_FIREBASE_APPCHECK_ENTERPRISE=true`.)
-3. Chạy `npm run dev`, mở Console trình duyệt: ở chế độ dev app tự bật debug token và in ra
+4. Chạy `npm run dev`, mở Console trình duyệt: ở chế độ dev app tự bật debug token và in ra
    một chuỗi UUID. Copy nó vào **App Check → Apps → ⋮ → Manage debug tokens**, nếu không
    thì localhost sẽ bị chặn.
-4. **App Check → APIs** → bật **Enforce** cho *Firebase AI Logic*.
+5. **App Check → APIs** → bật **Enforce** cho *Firebase AI Logic*.
 
 Code khởi tạo App Check nằm trong [`src/backend/firebase.js`](src/backend/firebase.js), chạy
 ngay sau `initializeApp` để Auth và Firestore cũng gửi kèm token — nếu sau này bạn enforce
