@@ -9,6 +9,6 @@ export const repo = firebaseEnabled ? cloud : local;
 export { firebaseEnabled, missingKeys, AI_MODEL } from './config.js';
 export {
   subscribeAuth, signInWithGoogle, signInWithEmail, signUpWithEmail, signOutUser,
-  authMessage, resendVerification, refreshUser,
+  authMessage, resendVerification, refreshUser, verifyDemoEmail,
 } from './auth.js';
 export { generateItinerary, aiAvailable } from './ai.js';

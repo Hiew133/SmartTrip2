@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useApp, useTripsReady } from '../store.jsx';
-import { firebaseEnabled, resendVerification } from '../backend/index.js';
 import {
   SEED_TRIPS, STATUS_LABEL, daysUntil, fmt, formatRange, photo, stopCount, tripStatus, tripTotal,
 } from '../data.js';
@@ -70,27 +69,13 @@ export default function Trips() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('Tất cả');
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState('');
 
   /* Without a verified address the rules will not let this account claim an
      invitation, and the query is skipped rather than failing every sign-in.
-     Say so here, where it can actually be fixed. */
-  const unverified = firebaseEnabled && state.user && !state.user.emailVerified;
-
-  const resend = async () => {
-    try {
-      await resendVerification();
-      setSent('Đã gửi. Mở hộp thư, bấm liên kết, rồi quay lại đây bấm "Tôi đã xác minh xong".');
-    } catch (err) {
-      console.error('SmartTrip · gửi lại email xác minh:', err);
-      setSent('Chưa gửi được. Thử lại sau một lát.');
-    }
-  };
-
-  const recheck = async () => {
-    const ok = await actions.refreshUser();
-    if (!ok) setSent('Vẫn chưa thấy xác minh. Bấm liên kết trong email rồi thử lại.');
-  };
+     The nudge belongs here, where someone is waiting for a trip to appear;
+     the buttons that fix it live on the profile screen, so there is only one
+     copy of that flow. */
+  const unverified = state.user && !state.user.emailVerified;
 
   const open = (id) => go('trip', { activeTripId: id, tripTab: 'itin', day: 0, focusIdx: -1 });
 
@@ -149,9 +134,9 @@ export default function Trips() {
             vào chuyến đi của người khác.
           </span>
           <span style={{ flex: 1 }} />
-          <button type="button" className="btn btn-ghost" onClick={resend}>Gửi lại email</button>
-          <button type="button" className="btn btn-ghost" onClick={recheck}>Tôi đã xác minh xong</button>
-          {sent && <span className="text-muted" style={{ flexBasis: '100%' }}>{sent}</span>}
+          <button type="button" className="btn btn-ghost" onClick={() => go('profile')}>
+            Xác minh ngay
+          </button>
         </div>
       )}
 

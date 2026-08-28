@@ -6,6 +6,7 @@ import Login from './screens/Login.jsx';
 import Trips from './screens/Trips.jsx';
 import Trip from './screens/Trip.jsx';
 import AIDesk from './screens/AIDesk.jsx';
+import Profile from './screens/Profile.jsx';
 import ExpenseDialog from './components/ExpenseDialog.jsx';
 import Toast from './components/Toast.jsx';
 
@@ -38,10 +39,14 @@ function TopBar() {
           onClick={() => patch((s) => ({ showEnglish: !s.showEnglish }))}>
           <span className="st-lang-dot" />EN
         </button>
-        <span className="st-navmeta">
+        {/* the way into the profile screen: verification, sign-in method, sign out */}
+        <button type="button" className="st-navmeta" onClick={() => go('profile')}
+          aria-current={state.screen === 'profile' ? 'page' : undefined}
+          title={me?.email} aria-label={`Trang cá nhân của ${me?.name || 'bạn'}`}>
           <Avatar initial={(me?.name || '?')[0].toUpperCase()} size={32} />
-          <span className="st-navname" title={me?.email}>{me?.name || 'Bạn'}</span>
-        </span>
+          <span className="st-navname">{me?.name || 'Bạn'}</span>
+          {me && !me.emailVerified && <span className="st-navdot" aria-hidden="true" />}
+        </button>
         <button type="button" className="btn btn-ghost" onClick={() => signOutUser()}>Đăng xuất</button>
       </nav>
     </header>
@@ -94,6 +99,7 @@ export default function App() {
             {state.screen === 'trips' && <Trips />}
             {state.screen === 'trip' && <Trip />}
             {state.screen === 'ai' && <AIDesk />}
+            {state.screen === 'profile' && <Profile />}
           </>
         )}
       </main>

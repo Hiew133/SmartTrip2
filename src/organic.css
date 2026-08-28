@@ -394,6 +394,19 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 .st-navmeta { display: inline-flex; align-items: center; gap: 9px; }
 .st-navname { font-size: 14px; font-weight: 600; }
+/* the same strip, now the doorway to the profile screen */
+button.st-navmeta {
+  cursor: pointer; font: inherit; color: inherit; border: none; background: transparent;
+  padding: 3px 10px 3px 3px; border-radius: 999px;
+  transition: background var(--dur) var(--ease-out);
+}
+button.st-navmeta:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
+/* an unverified address is the one thing on that screen that needs attention */
+.st-navdot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent);
+  box-shadow: 0 0 0 2.5px var(--color-bg);
+}
 
 /* language toggle — a labelled control, not a sun/moon switch */
 .st-lang {
