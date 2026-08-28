@@ -112,7 +112,7 @@ export async function generateItinerary(input) {
        Console rather than in the app — say which one it is. */
     if (text.includes('App Check')) {
       throw new Error(
-        'Firebase AI Logic đang bị khoá cho tới khi project bật App Check. Xem mục "Bật App Check" trong README.',
+        'Firebase AI Logic đang bị khoá cho tới khi project bật App Check. Xem mục App Check trong CLAUDE.md.',
         { cause: err },
       );
     }

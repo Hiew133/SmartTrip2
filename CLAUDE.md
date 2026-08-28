@@ -130,7 +130,23 @@ có secret key riêng cho luồng này. Code dùng `ReCaptchaEnterpriseProvider`
 4. `npm run dev` → mở Console trình duyệt, app tự in **debug token** (UUID) → copy vào
    **App Check → Apps → ⋮ → Manage debug tokens**. Đây là cách localhost qua được mà
    không phải nhét localhost vào khoá thật.
-5. **App Check → APIs** → **Enforce** cho *Firebase AI Logic*.
+
+   Debug token **là bí mật** — đừng commit, đừng chia sẻ. Xoá nó khi không cần nữa.
+   Token đổi khi xoá storage trình duyệt hoặc dùng máy khác, lúc đó phải đăng ký lại.
+
+   `firebase appcheck:debugtokens:create` mà SDK gợi ý **chưa có** trong firebase-tools
+   15.22.1 — phải làm bằng Console.
+5. **App Check → APIs** → **Enforce** cho *Firebase AI Logic*. Đây mới là bước mở khoá:
+   chừng nào chưa enforce thì project vẫn ở trạng thái "AI Logic deactivated" và trả 403,
+   dù App Check đã cài đúng.
+
+### App Check không làm hỏng Auth/Firestore
+
+Đã kiểm tra: khi App Check đã khởi tạo nhưng token lấy về 403 (chưa đăng ký debug token),
+Auth và Firestore **vẫn chạy bình thường** — chỉ có một dòng warning
+`@firebase/auth: Error while retrieving App Check token`. Lý do: App Check chưa được
+enforce cho hai dịch vụ đó. Nếu sau này bạn enforce cho cả Firestore thì debug token
+bắt buộc phải đăng ký, không thì local dev mất quyền đọc/ghi.
 
 > **Site key công khai.** Nó nằm sẵn trong mọi trang dùng reCAPTCHA nên vào `.env.local`
 > là bình thường. App Check không bảo vệ bằng cách giấu khoá này, mà bằng việc reCAPTCHA
