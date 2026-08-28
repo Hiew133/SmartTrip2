@@ -123,6 +123,29 @@ trước khi mở app cho người ngoài dùng.
 **Build → AI Logic → Get started**, chọn backend **Gemini Developer API**. Firebase sẽ
 tự bật API và tạo khoá phía server — client không giữ khoá Gemini nào.
 
+#### Bật App Check (bắt buộc cho AI Logic)
+
+Firebase **từ chối phục vụ AI Logic cho project chưa enforce App Check** — lỗi trả về là
+`403 ... you must enforce Firebase App Check`. Auth và Firestore vẫn chạy bình thường,
+chỉ Trợ lý AI bị khoá.
+
+1. **Build → App Check → Apps** → chọn app web `SmartTrip` → **reCAPTCHA v3** →
+   đăng ký, copy **site key**.
+2. Điền vào `.env.local`:
+   ```
+   VITE_FIREBASE_APPCHECK_SITE_KEY=<site key>
+   ```
+   (Nếu bạn chọn reCAPTCHA Enterprise thì thêm `VITE_FIREBASE_APPCHECK_ENTERPRISE=true`.)
+3. Chạy `npm run dev`, mở Console trình duyệt: ở chế độ dev app tự bật debug token và in ra
+   một chuỗi UUID. Copy nó vào **App Check → Apps → ⋮ → Manage debug tokens**, nếu không
+   thì localhost sẽ bị chặn.
+4. **App Check → APIs** → bật **Enforce** cho *Firebase AI Logic*.
+
+Code khởi tạo App Check nằm trong [`src/backend/firebase.js`](src/backend/firebase.js), chạy
+ngay sau `initializeApp` để Auth và Firestore cũng gửi kèm token — nếu sau này bạn enforce
+App Check cho cả hai dịch vụ đó thì không phải sửa gì thêm. Không điền site key thì App Check
+không bật, mọi thứ khác vẫn chạy như cũ.
+
 Model mặc định là `gemini-3.5-flash`, đổi bằng `VITE_GEMINI_MODEL` trong `.env.local`.
 
 Trợ lý dùng **structured output**: schema JSON được gửi kèm request nên câu trả lời về
@@ -207,5 +230,4 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 - Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app hiện chưa có router.
 - Chưa có xoá thành viên và chưa có luồng huỷ lời mời.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, và chưa có cách sắp xếp bằng bàn phím.
-- Chưa bật App Check — nên bật trước khi mở cho người ngoài dùng.
 - Ngoài bộ test Security Rules thì chưa có test nào khác, cũng chưa có lint hay CI.

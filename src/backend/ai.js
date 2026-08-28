@@ -15,17 +15,21 @@ const itinerarySchema = (Schema) => Schema.object({
     summary: Schema.string({ description: 'Một câu tóm tắt bản nháp, tiếng Việt' }),
     days: Schema.array({
       items: Schema.object({
-        place: Schema.string({ description: 'Khu vực chính của ngày, ví dụ "Hội An"' }),
-        stops: Schema.array({
-          items: Schema.object({
-            time: Schema.string({ description: 'Giờ bắt đầu, định dạng HH:MM 24 giờ' }),
-            name: Schema.string({ description: 'Tên địa điểm có thật' }),
-            note: Schema.string({ description: 'Một mẹo thực tế ngắn, tiếng Việt' }),
-            cost: Schema.number({ description: 'Chi phí ước tính cho CẢ NHÓM, đơn vị VND' }),
-            lat: Schema.number({ description: 'Vĩ độ thật của địa điểm' }),
-            lng: Schema.number({ description: 'Kinh độ thật của địa điểm' }),
+        properties: {
+          place: Schema.string({ description: 'Khu vực chính của ngày, ví dụ "Hội An"' }),
+          stops: Schema.array({
+            items: Schema.object({
+              properties: {
+                time: Schema.string({ description: 'Giờ bắt đầu, định dạng HH:MM 24 giờ' }),
+                name: Schema.string({ description: 'Tên địa điểm có thật' }),
+                note: Schema.string({ description: 'Một mẹo thực tế ngắn, tiếng Việt' }),
+                cost: Schema.number({ description: 'Chi phí ước tính cho CẢ NHÓM, đơn vị VND' }),
+                lat: Schema.number({ description: 'Vĩ độ thật của địa điểm' }),
+                lng: Schema.number({ description: 'Kinh độ thật của địa điểm' }),
+              },
+            }),
           }),
-        }),
+        },
       }),
     }),
   },
@@ -74,10 +78,22 @@ export async function generateItinerary(input) {
   }
 
   /* Loaded on demand: the Gemini SDK is a large chunk and only this one
-     screen ever needs it, so it stays out of the initial bundle. */
-  const { Schema, getGenerativeModel } = await import('firebase/ai');
+     screen ever needs it, so it stays out of the initial bundle. A failure
+     here is a build/serving problem, not something the person did — say so
+     rather than surfacing the bundler's own wording. */
+  let mod;
+  try {
+    mod = await import('firebase/ai');
+  } catch (err) {
+    console.error('SmartTrip · nạp SDK Gemini:', err);
+    throw new Error(
+      'Không nạp được SDK Gemini. Tải lại trang giúp mình; nếu vẫn lỗi thì dừng dev server và chạy lại npm run dev.',
+      { cause: err },
+    );
+  }
+  const { Schema, getGenerativeModel } = mod;
 
-  const model = getGenerativeModel(await ai(), {
+  const model = getGenerativeModel(ai(mod), {
     model: AI_MODEL,
     generationConfig: {
       responseMimeType: 'application/json',
@@ -86,7 +102,28 @@ export async function generateItinerary(input) {
     },
   });
 
-  const result = await model.generateContent(buildPrompt(input));
+  let result;
+  try {
+    result = await model.generateContent(buildPrompt(input));
+  } catch (err) {
+    console.error('SmartTrip · Gemini:', err);
+    const text = String(err?.message ?? '');
+    /* The two failures a project owner actually hits, both fixed in the
+       Console rather than in the app — say which one it is. */
+    if (text.includes('App Check')) {
+      throw new Error(
+        'Firebase AI Logic đang bị khoá cho tới khi project bật App Check. Xem mục "Bật App Check" trong README.',
+        { cause: err },
+      );
+    }
+    if (text.includes('403') || text.includes('PERMISSION_DENIED')) {
+      throw new Error(
+        'Project chưa được phép gọi Gemini. Kiểm tra Firebase Console → AI Logic đã bật chưa.',
+        { cause: err },
+      );
+    }
+    throw new Error('Không gọi được trợ lý AI. Kiểm tra mạng rồi thử lại.', { cause: err });
+  }
 
   let parsed;
   try {

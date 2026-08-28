@@ -17,6 +17,11 @@ export const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID,
 };
 
+/* App Check: the reCAPTCHA site key from Firebase Console → App Check.
+   Firebase AI Logic will not serve a project unless App Check is enforced. */
+export const appCheckSiteKey = env.VITE_FIREBASE_APPCHECK_SITE_KEY || '';
+export const appCheckUseEnterprise = env.VITE_FIREBASE_APPCHECK_ENTERPRISE === 'true';
+
 /** The Gemini model used by the AI desk. Override per project if needed. */
 export const AI_MODEL = env.VITE_GEMINI_MODEL || 'gemini-3.5-flash';
 
