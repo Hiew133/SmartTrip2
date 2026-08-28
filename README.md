@@ -112,8 +112,9 @@ Có sẵn bộ test chạy trên emulator:
 npm run test:rules
 ```
 
-20 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền được
-không, và toàn bộ luồng nhận lời mời — kể cả các trường hợp cố tình lách.
+27 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền hay
+sửa được danh sách thành viên không, toàn bộ luồng nhận lời mời, và luồng tự rời chuyến
+— kể cả các trường hợp cố tình lách.
 
 ### 4. Bật Firebase AI Logic (Trợ lý AI)
 
@@ -233,7 +234,8 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 
 - **SmartTrip không tự gửi email mời** — nút "Gửi email báo" mở thư nháp trong ứng dụng
   mail của người mời để họ bấm gửi. Gửi tự động cần Cloud Function, tức gói Blaze.
-- Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app hiện chưa có router.
-- Chưa có xoá thành viên và chưa có luồng huỷ lời mời.
+- Người tự rời chuyến có thể mang theo dòng thành viên của người khác: Security Rules
+  ghim được *bao nhiêu* dòng ra đi chứ không ghim được *dòng nào*. Không phải leo thang
+  quyền, và chủ chuyến thêm lại được — chi tiết trong CLAUDE.md.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, và chưa có cách sắp xếp bằng bàn phím.
-- Ngoài bộ test Security Rules thì chưa có test nào khác, cũng chưa có lint hay CI.
+- Ngoài bộ test Security Rules thì chưa có test nào khác, và chưa có CI.

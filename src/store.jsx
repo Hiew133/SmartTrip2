@@ -4,6 +4,20 @@ import { firebaseEnabled, refreshUser, repo, subscribeAuth } from './backend/ind
 
 const PREF_KEY = 'smarttrip-prefs';
 
+/* Share links look like /t/{tripId}. There is no router — the app is one
+   screen stack driven by state — so the path is read once at boot and kept as
+   an intent to act on later: the trip list has not arrived yet, and the person
+   may not even be signed in. Hosting rewrites every path to index.html, so
+   landing here is a normal cold start with a different pathname. */
+function readSharedTripId() {
+  try {
+    const m = /^\/t\/([A-Za-z0-9_-]{1,64})\/?$/.exec(window.location.pathname);
+    return m ? m[1] : null;
+  } catch {
+    return null;                      // no window (SSR) or an exotic URL
+  }
+}
+
 const defaultState = {
   screen: 'login',           // login | trips | trip | ai | profile
   auth: 'in',                // login screen: in | up
@@ -18,6 +32,8 @@ const defaultState = {
   // trip data (mirrored from the backend, never edited in place)
   trips: [],
   activeTripId: null,
+  // a trip id from a /t/{id} share link, waiting for the list to arrive
+  pendingTripId: readSharedTripId(),
 
   // trip detail
   tripTab: 'itin',           // itin | budget | members
@@ -108,15 +124,39 @@ export function AppProvider({ children }) {
     if (!uidKey) return undefined;
     return repo.subscribeTrips(
       stateRef.current.user,
-      (trips, { fromCache } = {}) => setState((s) => ({
-        ...s,
-        trips,
-        readyForUid: uidKey,
-        // a cached snapshot is not proof the problem went away
-        dataError: fromCache ? s.dataError : '',
-        // the open trip can be deleted by someone else mid-session
-        activeTripId: trips.some((t) => t.id === s.activeTripId) ? s.activeTripId : (trips[0]?.id ?? null),
-      })),
+      (trips, { fromCache } = {}) => {
+        /* A share link is answered here rather than in an effect of its own:
+           this is already the callback where data arrives from outside, and a
+           cached snapshot is not enough to conclude the trip is out of reach —
+           it may simply not have been fetched yet. */
+        const wanted = stateRef.current.pendingTripId;
+        const settle = wanted && !fromCache;
+        const open = settle && trips.some((t) => t.id === wanted) ? wanted : null;
+        if (settle) {
+          // the link has been spent; a reload should not chase it again
+          try { window.history.replaceState(null, '', '/'); } catch { /* file:// */ }
+        }
+
+        setState((s) => ({
+          ...s,
+          trips,
+          readyForUid: uidKey,
+          // a cached snapshot is not proof the problem went away
+          dataError: fromCache ? s.dataError : '',
+          // the open trip can be deleted by someone else mid-session
+          activeTripId: trips.some((t) => t.id === s.activeTripId) ? s.activeTripId : (trips[0]?.id ?? null),
+          ...(settle ? { pendingTripId: null } : {}),
+          ...(open ? { screen: 'trip', activeTripId: open, tripTab: 'itin', day: 0, focusIdx: -1 } : {}),
+          /* Not being able to see it is the normal case for a link forwarded
+             to someone who was never invited, so it is a note, not an error. */
+          ...(settle && !open ? {
+            toast: {
+              msg: 'Liên kết trỏ tới một chuyến đi bạn chưa có quyền xem. Nhờ chủ chuyến mời email của bạn.',
+              tone: 'neutral',
+            },
+          } : {}),
+        }));
+      },
       (err) => setState((s) => ({
         ...s,
         readyForUid: uidKey,

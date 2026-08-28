@@ -12,11 +12,22 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm run test:rules # kiểm thử Security Rules trên emulator — 20 ca
+npm run test:rules # kiểm thử Security Rules trên emulator — 27 ca
 ```
 
-`firebase emulators` đòi **JDK 21+**. Nếu máy chưa có:
-`winget install EclipseAdoptium.Temurin.21.JDK`, rồi trỏ `JAVA_HOME` vào nó khi chạy test.
+`firebase emulators` đòi **JDK 21+**. Máy này **đã có** ở
+`C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`, nhưng `java` trên PATH là
+JDK 17, nên phải trỏ `JAVA_HOME` khi chạy test:
+
+```bash
+JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot" npm run test:rules
+```
+
+Máy khác chưa có thì `winget install EclipseAdoptium.Temurin.21.JDK`.
+
+**`node_modules` phải cài đủ.** Bản cài dở (thiếu `firebase`, `eslint`) làm `npm run dev`
+nổ hàng loạt `Failed to resolve import "firebase/..."` — trông như lỗi code nhưng chỉ là
+thiếu gói. Chạy `npm install` là xong.
 
 ---
 
@@ -47,6 +58,20 @@ Hai trường đó tồn tại chỉ để Security Rules trả lời được "
 mà không phải đọc thêm document. Hàm `derive()` trong `firestore.js` dựng chúng; mọi
 đường ghi `members` đều phải đi qua đó. Rules cấm người quyền Sửa động vào chính hai
 trường này, nếu không họ tự nâng mình lên owner được.
+
+**`accessUnchanged()` phải khoá cả `members` và `pendingEmails`, không chỉ hai mirror.**
+Đây từng là lỗ thật, đã dựng lại trên emulator: hai trường đó không rule nào *đọc* tới
+nên trông như dữ liệu thường, và người quyền Sửa ghi được. Hậu quả:
+
+- `members: []` → client bỏ chuyến đi không có thành viên (`cleanTrip` trả null), nên
+  chuyến **biến mất khỏi màn hình của tất cả mọi người kể cả chủ**, còn document vẫn
+  nằm nguyên trong Firestore, không ai lấy lại được từ trong app.
+- Sửa được tên/email trên ghế của chủ chuyến.
+- Thêm email lạ vào `pendingEmails` → người lạ đó **đọc được cả chuyến đi**, vì
+  `isInvited()` mở quyền đọc theo đúng mảng này.
+
+Quy tắc rút ra: trường nào `derive()` sinh ra hoặc sinh từ nó thì đều là trường quyết
+định quyền, dù rule có đọc tới hay không.
 
 ---
 
@@ -86,8 +111,15 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
-| Test Security Rules | ✅ 20/20 pass trên emulator |
+| Test Security Rules | ✅ 27/27 pass trên emulator |
 | Nhận lời mời | ✅ tự nhận ghế khi đăng nhập (cần email đã xác minh) |
+| Gỡ / rời thành viên | ✅ chủ gỡ được người khác và huỷ được lời mời; người khác tự rời được |
+| Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days` và `expenses` |
+| Liên kết chia sẻ `/t/{id}` | ✅ mở đúng chuyến, giữ được qua bước đăng nhập |
+
+> **`.env.local` không có trong git.** Máy nào chưa có thì app chạy **chế độ thử**:
+> dữ liệu trong localStorage, Trợ lý AI trả bản nháp mẫu. Đó là hành vi đúng, không
+> phải hỏng — nhưng đừng kết luận gì về Firestore/Rules khi đang ở chế độ đó.
 
 Đã chạy thật trên project, không phải chỉ build: đăng nhập, đọc chuyến đi, `setDoc`,
 batch ghi ngày, `updateDoc` khoản chi, `runTransaction` mời thành viên, và Gemini sinh
@@ -166,31 +198,29 @@ bắt buộc phải đăng ký, không thì local dev mất quyền đọc/ghi.
 
 ## Đang vướng
 
-### Test Security Rules chưa chạy được
+### Rời chuyến: rules ghim được số dòng, không ghim được dòng nào
 
-`tests/firestore-rules.test.mjs` có 9 ca, gồm cả "editor tự nâng quyền" và "editor tự
-thêm ghế thành viên". `firebase emulators` đòi **JDK 21**, máy hiện có **JDK 17**.
+`leavesOwnSeat()` cho người không phải chủ tự bỏ ghế của mình. Nó bắt buộc bỏ đúng uid
+và role của người gọi, bớt đúng **một** dòng `members`, và không thêm sửa gì. Nhưng
+rules **không duyệt được mảng** để đối chiếu một dòng với `request.auth.uid`, nên nó
+không kiểm được dòng bị bỏ có phải của người gọi hay không — người rời đi có thể mang
+theo dòng của người khác.
 
-Rules đang deploy và đã xác nhận chặn người lạ (đọc `trips/` không token → 403), nhưng
-các nhánh còn lại **mới chỉ đúng trên giấy**. Cài JDK 21 rồi chạy `npm run test:rules`
-trước khi mở app cho người ngoài dùng.
-
-### Lời mời chưa thật sự mời ai
-
-`addMember` chỉ ghi một thành viên `pending: true` với `uid: null` vào chuyến đi. Không
-có email nào được gửi, và người được mời **chưa đọc được chuyến đi** vì Rules xét theo
-`memberIds` mà họ chưa có `uid` trong đó. Cần một Cloud Function đối chiếu email với
-tài khoản rồi điền `uid` vào ghế tương ứng. Chừng nào chưa có, cộng tác nhóm chưa chạy
-với người thật.
+Không phải leo thang quyền: nạn nhân vẫn còn uid trong `memberIds` và `roles` nên quyền
+ở tầng rules còn nguyên, chỉ là biến mất khỏi danh sách thành viên trên giao diện, và
+chủ chuyến thêm lại được. Bịt hẳn thì phải đưa danh tính ghế lên **khoá document**
+(`members/{uid}`) thay vì nằm trong một mảng — đổi cả mô hình dữ liệu.
 
 ### Khác
 
-- Liên kết chia sẻ `/t/{tripId}` chưa có route xử lý; app chưa có router.
 - Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, chưa có cách sắp xếp bằng bàn phím.
 - Trong Browser pane lúc kiểm thử, `net::ERR_CONNECTION_REFUSED` là do môi trường chặn
   host ngoài (ảnh picsum, tile OpenStreetMap, Google Fonts) — không phải lỗi app.
-- `npm run lint` còn 3 cảnh báo `react-hooks/set-state-in-effect` có sẵn từ trước
+- `npm run lint` còn **5** cảnh báo `react-hooks/set-state-in-effect` có sẵn từ trước
   (animation vào màn, toast, count-up). Đã để mức `warn` có chủ ý, không phải bỏ sót.
+- `npm run build` còn cảnh báo chunk >500 kB, trên `firebase-firestore` (567 kB). Split
+  thêm không giải quyết được; chỉ có cách không ship nó, mà `backend/index.js` import
+  tĩnh cả hai repository để chọn một. Xem chú thích trong `vite.config.js`.
 
 ---
 
@@ -226,7 +256,55 @@ Ba chi tiết đi kèm:
 đi thẳng vào chuyến của họ. Đăng nhập Google là xác minh sẵn; đăng ký bằng mật khẩu thì
 `signUpWithEmail` gửi link xác minh, và `claimInvites` **bỏ qua luôn truy vấn** khi
 `emailVerified` false — nếu không nó sẽ ném permission-denied mỗi lần đăng nhập. Màn
-Chuyến đi hiện một dòng nhắc kèm nút gửi lại link.
+Chuyến đi hiện một dòng nhắc, nhưng **các nút thao tác nằm ở trang cá nhân**, chỉ một
+bản duy nhất.
+
+---
+
+## Trang cá nhân, và xác minh email ở chế độ thử
+
+`screens/Profile.jsx`, vào bằng cách bấm tên trên thanh trên cùng (chấm cam cạnh tên
+nghĩa là email chưa xác minh). Nó giữ toàn bộ luồng xác minh: gửi lại link, "Tôi đã xác
+minh xong" (`refreshUser` → `claimInvites`), và cho biết tài khoản đăng nhập bằng gì —
+`shape()` nay mang thêm `provider` lấy từ `providerData`.
+
+**Chế độ thử mô phỏng trạng thái xác minh, không hard-code `true` nữa.** Trước đây
+`demoSignIn` luôn đặt `emailVerified: true`, nên trang này không có gì để hiện đúng
+trong chế độ mà một bản clone mới chạy vào. Giờ:
+
+| Đường vào | `emailVerified` |
+|---|---|
+| Tiếp tục với Google | `true` — tài khoản Google về là đã xác minh, giống thật |
+| Đăng ký email + mật khẩu | `false` |
+| Đăng nhập lại cùng địa chỉ đó | giữ nguyên cái đã xác nhận |
+
+Không có hộp thư nào để gửi tới, nên `verifyDemoEmail()` thay cho việc bấm link. Nó
+**ném lỗi khi `firebaseEnabled`** — đừng gỡ cái chặn đó, nếu không sẽ tồn tại một đường
+tự đánh dấu đã xác minh ở môi trường thật.
+
+---
+
+## Liên kết chia sẻ `/t/{tripId}`
+
+App **không có router** — nó là một chồng màn hình điều khiển bằng state. `store.jsx`
+đọc `location.pathname` đúng một lần lúc khởi động (`readSharedTripId`) và giữ lại
+thành `pendingTripId`, vì lúc đó chưa có danh sách chuyến đi và có khi còn chưa đăng
+nhập. Link được xử lý **trong callback của `subscribeTrips`**, không phải trong một
+effect riêng: đó đã là chỗ dữ liệu từ ngoài đổ về, nên không đẻ thêm cảnh báo
+`set-state-in-effect`.
+
+Hai chi tiết:
+
+- **Chỉ kết luận khi `fromCache` là false.** Snapshot từ cache chưa đủ để nói chuyến đi
+  ngoài tầm với — có thể nó chỉ chưa được tải về.
+- **`history.replaceState` về `/` sau khi dùng xong**, để tải lại trang không đuổi theo
+  link một lần nữa.
+
+Không xem được thì hiện toast nhắc nhờ chủ chuyến mời — với một link chuyển tay cho
+người chưa được mời thì đó là chuyện bình thường, không phải lỗi.
+
+Hosting đã rewrite mọi path về `index.html` (`firebase.json`), nên vào thẳng link là một
+lần khởi động bình thường với pathname khác.
 
 ## Những chỗ đã sập — đừng dẫm lại
 
@@ -269,6 +347,19 @@ theo **chính truy vấn**, không theo từng document nó sẽ trả về. B�
 `getDoc` nên pass hết, trong khi app thật dùng `getDocs(query(...))` và bị chặn. Thêm
 tính năng đọc nào thì test đúng cái lời gọi mà client dùng.
 
+**Xoá cha trước là mất luôn quyền xoá con.** Firestore không cascade, mà rule của
+`days`/`expenses` `get()` document trip cha để tra quyền — cha mất thì `get()` trả null,
+rule lỗi, và **mọi thao tác đọc/ghi/xoá lên phần con bị từ chối vĩnh viễn**. Bản
+`deleteTrip` đầu tiên chỉ `deleteDoc(tripRef)`, để lại ngày và khoản chi mồ côi mà không
+client nào chạm được nữa. Đã dựng lại đúng cảnh đó trên emulator. Giờ `deleteTrip` lấy
+hết con, xoá theo lô (trần batch là 500), **rồi mới** xoá cha. Quy tắc chung: cái gì
+`get()` lên cha để tra quyền thì phải chết trước cha.
+
+**Test pass hết không có nghĩa là rules kín.** Bộ test 20 ca pass 20/20 trong khi ba lỗ
+`members`/`pendingEmails` ở trên vẫn mở toang — vì không ca nào chạm tới hai trường đó.
+Thêm nhánh nào vào rules thì viết ca cho **đúng trường** nhánh đó không bảo vệ, đừng chỉ
+test những trường đã nghĩ tới.
+
 **Dev server cache module cũ sau khi đổi export.** Thêm export mới vào một file đang
 được import mà HMR báo `does not provide an export named ...` thì restart dev server,
 đừng đi tìm lỗi cú pháp không có thật.
@@ -277,6 +368,9 @@ tính năng đọc nào thì test đúng cái lời gọi mà client dùng.
 
 ## Git
 
-Nhánh làm việc: `claude/project-review-issues-4529a4`, merge vào `main` bằng
+Nhánh làm việc: `claude/project-review-action-items-aed835`, merge vào `main` bằng
 fast-forward. `main` được checkout ở `E:/Git/SmartTrip2` — **kiểm tra worktree đó sạch
 trước khi merge**, đã từng có một phiên khác để công việc dở dang ở đấy.
+
+Worktree phụ nằm trong `.claude/worktrees/`. Mỗi cái cần `npm install` riêng — chúng
+không dùng chung `node_modules` với `E:/Git/SmartTrip2`.
