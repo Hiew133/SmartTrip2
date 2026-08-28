@@ -60,9 +60,12 @@ export default function Login() {
             <span className="st-en text-muted"> · Plan together, travel together.</span>
           </p>
 
+          {/* Without a project every button on this screen is a stand-in, and
+              they look exactly like the real ones — say so here rather than
+              letting someone conclude Google sign-in is broken. */}
           {!firebaseEnabled && (
             <p className="st-hint" style={{ marginBottom: 20 }}>
-              Chế độ thử: chưa có project Firebase ({missingKeys.join(', ')}), dữ liệu chỉ lưu trong máy.
+              Chế độ thử: chưa có project Firebase — đăng nhập là mô phỏng, dữ liệu chỉ nằm trong máy này.
             </p>
           )}
 
@@ -118,8 +121,17 @@ export default function Login() {
           <p className="st-rule">hoặc<span className="st-en">&nbsp;· or</span></p>
           <button type="button" className="btn btn-secondary btn-block" disabled={busy}
             onClick={() => attempt(signInWithGoogle)}>
-            Tiếp tục với Google
+            {firebaseEnabled ? 'Tiếp tục với Google' : 'Tiếp tục với Google (mô phỏng)'}
           </button>
+
+          {!firebaseEnabled && (
+            <p className="st-fineprint">
+              Nút này không mở cửa sổ Google thật — nó tạo sẵn một tài khoản mẫu đã xác minh,
+              nên trang cá nhân sẽ không có gì để xác minh nữa. Muốn xem luồng xác minh email
+              thì <b>Đăng ký</b> bằng email và mật khẩu. Muốn tài khoản Google thật và email
+              xác minh thật thì cần <b>.env.local</b> — hiện thiếu: {missingKeys.join(', ')}.
+            </p>
+          )}
           <p className="st-fineprint">
             Bằng việc tiếp tục, bạn đồng ý với <a href="#dieu-khoan">Điều khoản sử dụng</a> và{' '}
             <a href="#rieng-tu">Chính sách riêng tư</a> của SmartTrip.
