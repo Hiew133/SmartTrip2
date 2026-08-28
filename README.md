@@ -66,7 +66,12 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
 
 ## Nối Firebase
 
-App chạy được ngay không cần Firebase: khi thiếu cấu hình nó vào **chế độ thử**, dùng
+> **Trạng thái:** dự án đã nối vào project `nihon-speaking-29442-5f1db`.
+> `.firebaserc` đã trỏ sẵn; Security Rules đã deploy; web app `SmartTrip` đã đăng ký.
+> Chỉ cần `cp .env.example .env.local` rồi điền config (hoặc chạy
+> `npx firebase apps:sdkconfig WEB`) là chạy được — `.env.local` không nằm trong git.
+
+App vẫn chạy được khi không có Firebase: thiếu cấu hình thì vào **chế độ thử**, dùng
 tài khoản giả và lưu dữ liệu trong localStorage. Nối Firebase để có đăng nhập thật,
 đồng bộ realtime giữa các thành viên, và Trợ lý AI gọi Gemini thật.
 
@@ -106,6 +111,12 @@ Có sẵn bộ test chạy trên emulator:
 ```bash
 npm run test:rules
 ```
+
+⚠️ Bộ test này **chưa từng chạy được**: `firebase emulators` đòi JDK 21, máy đang có
+JDK 17. Rules hiện đã deploy và đã xác nhận chặn được truy cập vô danh (đọc `trips/`
+không kèm token trả về HTTP 403), nhưng các nhánh còn lại — editor tự nâng quyền,
+editor tự thêm ghế thành viên — mới chỉ đúng trên giấy. Cài JDK 21 rồi chạy lệnh trên
+trước khi mở app cho người ngoài dùng.
 
 ### 4. Bật Firebase AI Logic (Trợ lý AI)
 
