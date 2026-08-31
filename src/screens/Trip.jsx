@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useApp, useActiveTrip, useTripRole, canEdit, computeBudget } from '../store.jsx';
+import { useApp, useActiveTrip, useTripRole, canEdit } from '../store.jsx';
+import { computeBudget } from '../budget.js';
 import { STATUS_LABEL, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
-import { Avatar, ChevronLeft, Photo, Users } from '../components/ui.jsx';
+import { Avatar, ChevronLeft, Photo, Printer, Users } from '../components/ui.jsx';
 import { useFieldDraft } from '../components/useFieldDraft.js';
 import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
@@ -57,6 +58,13 @@ export default function Trip() {
           <ChevronLeft width="15" height="15" />Tất cả chuyến đi
         </button>
         <span style={{ flex: 1 }} />
+        {/* No library and no server: the browser's own print dialog offers
+            "Save as PDF", and TripPrintSheet is what it lays out. Everyone
+            gets this, including people who can only view the trip. */}
+        <button type="button" className="btn btn-ghost" style={{ fontSize: 13 }}
+          onClick={() => window.print()}>
+          <Printer width="15" height="15" />Xuất PDF
+        </button>
         {role === 'owner' && !confirmDelete && (
           <button type="button" className="btn btn-ghost st-danger" style={{ fontSize: 13 }}
             onClick={() => setConfirmDelete(true)}>

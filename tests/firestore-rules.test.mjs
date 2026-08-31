@@ -297,6 +297,97 @@ describe('firestore.rules', () => {
     await assertFails(updateDoc(tripRef(as(STRANGER)), left(EDITOR)));
   });
 
+
+  /* ── shape validation ───────────────────────────────────────────────────
+     These are about what may be written, not who may write it, so each one
+     is attempted by somebody who is definitely allowed — usually the owner.
+     A failure here therefore means the shape was rejected, not the caller. */
+
+  it('a trip title has to be a string of sane length', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ title: 12345 })));
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ title: 'x'.repeat(201) })));
+    await assertSucceeds(updateDoc(tripRef(as(OWNER)), tripData({ title: 'x'.repeat(200) })));
+  });
+
+  it('plan is a number and never negative', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ plan: 'mười sáu triệu' })));
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ plan: -1 })));
+    await assertSucceeds(updateDoc(tripRef(as(OWNER)), tripData({ plan: 0 })));
+  });
+
+  it('an editor cannot write a trip body of any size they like', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(EDITOR)), tripData({ body: 'x'.repeat(2001) })));
+    await assertSucceeds(updateDoc(tripRef(as(EDITOR)), tripData({ body: 'x'.repeat(2000) })));
+  });
+
+  it('the member list cannot grow past the cap', async () => {
+    await seed();
+    const many = Array.from({ length: 51 }, (_, i) => ({
+      id: `m${i}`, name: `N${i}`, email: `n${i}@x.vn`, role: 'view', pending: true, uid: null,
+    }));
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ members: many })));
+  });
+
+  it('settled and roles have to be maps, not lists', async () => {
+    await seed();
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ settled: ['a>b:1'] })));
+    await assertFails(updateDoc(tripRef(as(OWNER)), tripData({ roles: [OWNER] })));
+  });
+
+  it('a day cannot hold junk where its stops go', async () => {
+    await seed();
+    const fs = as(EDITOR);
+    await assertFails(updateDoc(dayRef(fs), { items: 'không phải mảng' }));
+    await assertFails(updateDoc(dayRef(fs), { place: 42 }));
+    await assertFails(updateDoc(dayRef(fs), { order: 'đầu tiên' }));
+    await assertSucceeds(updateDoc(dayRef(fs), { items: [{ id: 's1', name: 'Mỹ Khê' }], order: 3 }));
+  });
+
+  it('a day cannot be stuffed with more stops than a day could hold', async () => {
+    await seed();
+    const many = Array.from({ length: 101 }, (_, i) => ({ id: `s${i}`, name: `Điểm ${i}` }));
+    await assertFails(updateDoc(dayRef(as(EDITOR)), { items: many }));
+  });
+
+  it('an expense amount has to be a number, and not negative', async () => {
+    await seed();
+    const fs = as(EDITOR);
+    await assertFails(updateDoc(expenseRef(fs), { amount: 'nhiều lắm' }));
+    await assertFails(updateDoc(expenseRef(fs), { amount: -5000 }));
+    await assertSucceeds(updateDoc(expenseRef(fs), { amount: 0 }));
+  });
+
+  it('an expense keeps its shape through a partial update', async () => {
+    /* reassignPayer sends only { payerId }. Rules see the merged document, so
+       the untouched fields still have to satisfy the shape check — if they did
+       not, handing expenses over would fail for every existing expense. */
+    await seed();
+    await assertSucceeds(updateDoc(expenseRef(as(OWNER)), { payerId: 'm2' }));
+    await assertFails(updateDoc(expenseRef(as(OWNER)), { payerId: 99 }));
+  });
+
+  it('a viewer still cannot write a perfectly well-formed day', async () => {
+    // shape checks are added to the access check, never instead of it
+    await seed();
+    await assertFails(updateDoc(dayRef(as(VIEWER)), { items: [], order: 0 }));
+    await assertFails(updateDoc(expenseRef(as(VIEWER)), { amount: 1 }));
+  });
+
+  it('a stranger cannot read or write the children either', async () => {
+    await seed();
+    await assertFails(getDoc(dayRef(as(STRANGER))));
+    await assertFails(updateDoc(dayRef(as(STRANGER)), { items: [] }));
+    await assertFails(deleteDoc(expenseRef(as(STRANGER))));
+  });
+
+  it('an editor can still delete a day and an expense', async () => {
+    await seed();
+    await assertSucceeds(deleteDoc(dayRef(as(EDITOR))));
+    await assertSucceeds(deleteDoc(expenseRef(as(EDITOR))));
+  });
   it('nothing outside /trips is reachable', async () => {
     await assertFails(getDoc(doc(as(OWNER), 'secrets', 'x')));
     await assertFails(setDoc(doc(as(OWNER), 'secrets', 'x'), { a: 1 }));

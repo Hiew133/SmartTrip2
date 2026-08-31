@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useApp, computeBudget, settleKey, toggleSettled } from '../../store.jsx';
+import { useApp } from '../../store.jsx';
+import { computeBudget, settleKey, toggleSettled } from '../../budget.js';
 import { fmt, first } from '../../data.js';
-import { Avatar, Check, Plus, useCountUp } from '../../components/ui.jsx';
+import { Avatar, Check, En, Plus, useCountUp } from '../../components/ui.jsx';
 
 /* `value` counts up from zero; `fallback` replaces it entirely when the number
    would be meaningless (no budget set yet, nobody to split between). */
@@ -161,7 +162,7 @@ export default function BudgetTab({ trip, editable }) {
       <section aria-label="Chia tiền">
         <h2 style={{ margin: '0 0 5px', fontSize: 27 }}>Chia tiền</h2>
         <p className="st-daysub">
-          Số dư sau khi chia đều<span className="st-en"> · Split balances</span>
+          Số dư sau khi chia đều<En> · Split balances</En>
         </p>
         <div className="st-balances st-stagger">
           {bal.map((b, i) => (
@@ -180,7 +181,7 @@ export default function BudgetTab({ trip, editable }) {
           {transfers.length === 0
             ? 'Không ai còn nợ ai.'
             : `${transfers.length} giao dịch là đủ để cả nhóm sạch nợ`}
-          <span className="st-en"> · Settle up</span>
+          <En> · Settle up</En>
         </p>
         <div>
           {transfers.map((t) => {

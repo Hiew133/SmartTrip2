@@ -62,8 +62,18 @@ export async function deleteTrip(tripId) {
   commit(load().filter((t) => t.id !== tripId));
 }
 
-export async function addDay(tripId, day) {
+/* `order` is implicit here — the array position is the order — so the argument
+   is accepted and ignored, keeping the signature identical to the cloud
+   repository. Same for reorderDays: it rewrites the array instead of a field. */
+export async function addDay(tripId, day, _order) {
   edit(tripId, (t) => ({ ...t, days: [...t.days, day] }));
+}
+
+export async function reorderDays(tripId, orderedIds) {
+  edit(tripId, (t) => ({
+    ...t,
+    days: orderedIds.map((id) => t.days.find((d) => d.id === id)).filter(Boolean),
+  }));
 }
 
 export async function updateDay(tripId, dayId, fields) {
@@ -86,6 +96,14 @@ export async function updateExpense(tripId, expenseId, fields) {
 
 export async function removeExpense(tripId, expenseId) {
   edit(tripId, (t) => ({ ...t, expenses: t.expenses.filter((e) => e.id !== expenseId) }));
+}
+
+export async function reassignPayer(tripId, expenseIds, toMemberId) {
+  const ids = new Set(expenseIds);
+  edit(tripId, (t) => ({
+    ...t,
+    expenses: t.expenses.map((e) => (ids.has(e.id) ? { ...e, payerId: toMemberId } : e)),
+  }));
 }
 
 export async function setSettled(tripId, settled) {

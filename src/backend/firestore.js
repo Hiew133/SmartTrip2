@@ -69,6 +69,17 @@ const expenseDoc = (e) => ({
 /** Live view of every trip this user belongs to, assembled from three
  *  collections. Returns an unsubscribe that also tears down the per-trip
  *  listeners it opened. */
+/* Two listeners per trip, and no pagination — the trip list shows a stop count
+   and a running total for every trip, and both are derived from the children
+   rather than stored as counters on the parent (see CLAUDE.md: derived numbers
+   cannot go stale, denormalised ones can). That is the right trade for a trip
+   planner and the wrong one for an account with hundreds of trips.
+
+   The ceiling is real, so it says so out loud in development instead of being
+   discovered as unexplained slowness. Raising it properly means counters on
+   the trip document — an explicit reversal of that rule, not a tweak. */
+const LIVE_TRIP_WARN = 40;
+
 export function subscribeTrips(user, cb, onError) {
   const q = query(tripsRef(), where('memberIds', 'array-contains', user.uid));
 
@@ -138,8 +149,16 @@ export function subscribeTrips(user, cb, onError) {
     retries.delete(id);
   };
 
+  let warned = false;
   const unsubTrips = onSnapshot(q, (snap) => {
     fromCache = snap.metadata.fromCache;
+    if (import.meta.env.DEV && !warned && snap.size > LIVE_TRIP_WARN) {
+      warned = true;
+      console.warn(
+        `SmartTrip · ${snap.size} chuyến đi đang mở ${snap.size * 2} listener. `
+        + 'Trên mức này nên đếm sẵn số điểm dừng và tổng chi trên document chuyến đi.',
+      );
+    }
     const live = new Set(snap.docs.map((d) => d.id));
     snap.docs.forEach((d) => { meta.set(d.id, d.data()); watch(d.id); });
     [...subs.keys()].forEach((id) => { if (!live.has(id)) unwatch(id); });
@@ -206,9 +225,22 @@ export async function deleteTrip(tripId) {
   await deleteDoc(tripRef(tripId));
 }
 
-export async function addDay(tripId, day) {
+/* `order` is the day's index in the trip, and nothing else. It used to be
+   Date.now() here and the array index in createTrip — two scales in one
+   collection, which happened to sort correctly only because days were always
+   appended. Reordering would have broken it immediately. The caller passes the
+   position it wants, and reorderDays rewrites the whole run. */
+export async function addDay(tripId, day, order) {
   const batch = writeBatch(db());
-  batch.set(dayRef(tripId, day.id), dayDoc(day, Date.now()));
+  batch.set(dayRef(tripId, day.id), dayDoc(day, order));
+  batch.update(tripRef(tripId), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
+/** Renumber every day from an explicit list of ids, first to last. */
+export async function reorderDays(tripId, orderedIds) {
+  const batch = writeBatch(db());
+  orderedIds.forEach((id, i) => batch.update(dayRef(tripId, id), { order: i }));
   batch.update(tripRef(tripId), { updatedAt: serverTimestamp() });
   await batch.commit();
 }
@@ -234,6 +266,18 @@ export async function updateExpense(tripId, expenseId, fields) {
 
 export async function removeExpense(tripId, expenseId) {
   await deleteDoc(expenseRef(tripId, expenseId));
+}
+
+/* Hand a set of expenses to a different payer.
+   The ids come from the caller, which already holds the whole expense list —
+   querying for them again would be a second read for something we know, and
+   would leave a window where a new expense slips in unnoticed. */
+export async function reassignPayer(tripId, expenseIds, toMemberId) {
+  for (let i = 0; i < expenseIds.length; i += 400) {
+    const batch = writeBatch(db());
+    expenseIds.slice(i, i + 400).forEach((id) => batch.update(expenseRef(tripId, id), { payerId: toMemberId }));
+    await batch.commit();
+  }
 }
 
 export async function setSettled(tripId, settled) {

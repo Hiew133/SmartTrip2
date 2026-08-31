@@ -661,7 +661,7 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
     color-mix(in srgb, var(--color-accent) 34%, transparent) 92%, transparent);
 }
 .st-stop {
-  position: relative; display: grid; grid-template-columns: 34px 52px 1fr auto auto;
+  position: relative; display: grid; grid-template-columns: 34px 52px 1fr auto auto auto;
   gap: 14px; align-items: center; padding: 13px 15px; border-radius: 20px;
   cursor: pointer; background: transparent; text-align: left; border: 1px solid transparent;
   transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out),
@@ -672,9 +672,11 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
   background: var(--color-neutral-100); border-color: var(--color-accent-200);
   box-shadow: var(--shadow-sm);
 }
+/* a button, not a badge: it is the keyboard-reachable way to locate the stop */
 .st-stop-num {
   width: 30px; height: 30px; border-radius: 50%; display: inline-flex;
   align-items: center; justify-content: center; font-weight: 700; font-size: 13px;
+  font-family: inherit; border: 0; padding: 0; cursor: pointer;
   background: var(--color-accent-100); color: var(--color-accent-800);
   box-shadow: 0 0 0 4px var(--color-bg); transition: all 260ms var(--ease-spring);
 }
@@ -759,8 +761,9 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 .st-settle-btn:active { transform: scale(.96); }
 
 /* — members — */
+/* wraps so the expense-handover panel can take a line of its own */
 .st-member {
-  display: flex; align-items: center; gap: 14px; padding: 13px 17px; border-radius: 22px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 13px 17px; border-radius: 22px;
   background: color-mix(in srgb, var(--color-neutral-100) 55%, var(--color-surface));
   border: 1px solid color-mix(in srgb, var(--color-text) 6%, transparent);
   transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
@@ -921,6 +924,33 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 .st-stop:hover .st-stop-edit, .st-stop-edit:focus-visible, .st-stop.active .st-stop-edit { opacity: 1; }
 .st-stop-edit:hover { background: var(--color-accent-100); border-color: var(--color-accent-300); }
 
+/* Reordering without a mouse. HTML5 drag-and-drop never fires on touch and has
+   no keyboard equivalent, so these two do the same move by another route. They
+   fade in on hover like the edit button — except where there is no hover to
+   wait for, which is exactly the case they exist to serve. */
+.st-stop-move { display: inline-flex; gap: 2px; }
+.st-stop-move button {
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border-radius: 50%;
+  background: transparent; border: 1px solid var(--color-divider);
+  color: var(--color-accent-700); opacity: 0;
+  transition: opacity var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.st-stop:hover .st-stop-move button,
+.st-stop.active .st-stop-move button,
+.st-stop-move button:focus-visible { opacity: 1; }
+.st-stop-move button:hover:not(:disabled) { background: var(--color-accent-100); border-color: var(--color-accent-300); }
+.st-stop-move button:disabled { cursor: default; opacity: 0; }
+.st-stop:hover .st-stop-move button:disabled,
+.st-stop.active .st-stop-move button:disabled {
+  opacity: .3; color: color-mix(in srgb, var(--color-text) 40%, transparent);
+}
+@media (hover: none) {
+  .st-stop-move button { opacity: 1; }
+  .st-stop-move button:disabled { opacity: .3; }
+  .st-stop-edit { opacity: 1; }
+}
+
 .st-stopedit {
   border-radius: 22px; padding: 18px 20px 14px; margin: 4px 0;
   background: var(--color-neutral-100);
@@ -997,9 +1027,89 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
   .st-trip-feature .st-trip-title { font-size: 27px; }
   .st-aigrid { grid-template-columns: 1fr; }
   .st-hero-body { padding: 26px 22px 22px; }
-  .st-stop { grid-template-columns: 34px 1fr auto auto; }
+  .st-stop { grid-template-columns: 34px 1fr auto auto auto; }
   .st-stopedit-grid { grid-template-columns: 110px 1fr; }
   .st-stopedit-wide { grid-column: 1 / -1; }
   .st-stop-time { grid-column: 2; font-size: 12.5px; }
   .st-stops::before { left: 28px; }
+}
+
+/* Day reordering sits in the day title row, where there is no row-hover to
+   reveal it — so unlike the stop version it is always visible. */
+.st-daymove button { opacity: 1; }
+.st-daymove button:disabled { opacity: .3; }
+
+/* — place search — the dropdown under the stop name field */
+.st-placebox { position: relative; display: block; }
+.st-placelist {
+  position: absolute; z-index: var(--z-sticky); left: 0; right: 0; top: calc(100% + 5px);
+  margin: 0; padding: 5px; list-style: none; max-height: 268px; overflow-y: auto;
+  background: var(--color-neutral-100); border: 1px solid var(--color-accent-200);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+}
+.st-placenote {
+  padding: 9px 11px; font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 58%, transparent);
+}
+.st-placeerr { color: var(--color-danger); }
+.st-placeitem {
+  display: flex; gap: 9px; align-items: flex-start; cursor: pointer;
+  padding: 8px 10px; border-radius: var(--radius-sm); font-size: 14px;
+  transition: background var(--dur) var(--ease-out);
+}
+.st-placeitem svg { flex: none; margin-top: 3px; color: var(--color-accent-600); }
+.st-placeitem b { display: block; font-weight: 700; line-height: 1.3; }
+.st-placeaddr {
+  display: block; font-size: 12.5px; margin-top: 1px; line-height: 1.35;
+  color: color-mix(in srgb, var(--color-text) 58%, transparent);
+}
+.st-placeitem.active { background: var(--color-accent-100); }
+
+/* Handing over a leaving member's expenses — appears inside their row, so it
+   sits under the whole row rather than squeezing into the last column. */
+.st-handover {
+  flex-basis: 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; padding: 11px 13px; border-radius: var(--radius-md);
+  background: var(--color-accent-100); border: 1px solid var(--color-accent-200);
+  font-size: 13px; line-height: 1.45;
+}
+.st-handover select { width: auto; min-width: 168px; font-size: 13px; min-height: 34px; }
+
+/* ── print ────────────────────────────────────────────────────────────────
+   "Xuất PDF" is the browser's own Print → Save as PDF. TripPrintSheet renders
+   the whole trip — every day at once, which the screen never does — and only
+   becomes visible here. Everything else on the page is hidden rather than
+   restyled: a printed page has no nav, no map, and no buttons to press. */
+.st-print { display: none; }
+
+@media print {
+  .st-topbar, .st-grain, .st-skip, .st-toast, #main, .dialog-backdrop { display: none !important; }
+  .st-print { display: block; }
+
+  @page { margin: 15mm; }
+  html, body, .st-app {
+    background: #fff !important; color: #000;
+    font-size: 11pt; line-height: 1.4;
+  }
+  .st-print-head { border-bottom: 1.5pt solid #000; padding-bottom: 8pt; margin-bottom: 12pt; }
+  .st-print h1 { font-size: 20pt; margin: 0 0 4pt; }
+  .st-print-meta { font-size: 9.5pt; color: #444; margin: 0 0 3pt; }
+  .st-print-body { font-size: 10pt; margin: 6pt 0; }
+
+  /* a day should not be split across a page break if it can be helped */
+  .st-print-day { break-inside: avoid; margin-bottom: 13pt; }
+  .st-print h2 {
+    font-size: 13pt; margin: 0 0 5pt; padding-bottom: 3pt;
+    border-bottom: .5pt solid #999;
+  }
+  .st-print h3 { font-size: 11pt; margin: 9pt 0 3pt; }
+  .st-print-daymeta { display: block; font-size: 9pt; font-weight: 400; color: #444; margin-top: 2pt; }
+
+  .st-print-table { width: 100%; border-collapse: collapse; }
+  .st-print-table td { vertical-align: top; padding: 3pt 0; border-bottom: .25pt solid #ddd; }
+  .st-print-time { width: 62pt; font-variant-numeric: tabular-nums; color: #444; }
+  .st-print-cost { width: 78pt; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .st-print-note { font-size: 9.5pt; color: #444; }
+  .st-print-list { margin: 0; padding-left: 14pt; font-size: 10.5pt; }
+  .st-print-foot { margin-top: 14pt; font-size: 9pt; color: #666; }
 }

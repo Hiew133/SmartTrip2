@@ -3,7 +3,7 @@ import { useApp } from '../store.jsx';
 import {
   firebaseEnabled, resendVerification, signOutUser, verifyDemoEmail,
 } from '../backend/index.js';
-import { Avatar, Check, ChevronLeft } from '../components/ui.jsx';
+import { Avatar, Check, ChevronLeft, En } from '../components/ui.jsx';
 
 /* The verification flow lives here rather than in a banner on the trip list.
    An account that signed in with Google has nothing to do on this screen but
@@ -74,7 +74,7 @@ export default function Profile() {
       </button>
 
       <header className="st-rise" style={{ marginTop: 8 }}>
-        <span className="st-eyebrow">Tài khoản<span className="st-en">&nbsp;· Profile</span></span>
+        <span className="st-eyebrow">Tài khoản<En>&nbsp;· Profile</En></span>
         <h1 className="st-display">Trang cá nhân</h1>
         <p className="st-lede" style={{ margin: '14px 0 0', maxWidth: '58ch' }}>
           Thông tin đăng nhập của bạn và trạng thái xác minh email — thứ quyết định
@@ -107,7 +107,7 @@ export default function Profile() {
             <p className="st-daysub" style={{ maxWidth: '58ch' }}>
               Địa chỉ <b>{me.email}</b> đã được xác minh. Ai mời bạn vào chuyến đi bằng
               chính địa chỉ này thì chuyến đó tự hiện trong danh sách của bạn.
-              <span className="st-en"> · Email verified</span>
+              <En> · Email verified</En>
             </p>
             <p className="st-hint" style={{ marginTop: 18, display: 'inline-flex' }}>
               <Check width="15" height="15" />
@@ -120,7 +120,7 @@ export default function Profile() {
               Địa chỉ <b>{me.email}</b> chưa được xác minh. Chừng nào chưa xác minh,
               SmartTrip không cho tài khoản này nhận lời mời — nếu không thì ai cũng có
               thể đăng ký bằng email của người khác rồi đi thẳng vào chuyến của họ.
-              <span className="st-en"> · Verify your email</span>
+              <En> · Verify your email</En>
             </p>
 
             <ol className="st-daysub" style={{ maxWidth: '58ch', paddingLeft: 20, lineHeight: 1.9 }}>

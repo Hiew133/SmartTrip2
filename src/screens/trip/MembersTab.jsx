@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../store.jsx';
-import { uid } from '../../data.js';
-import { Avatar, Check, Seg } from '../../components/ui.jsx';
+import { fmt, uid } from '../../data.js';
+import { Avatar, Check, En, Seg } from '../../components/ui.jsx';
 
 const ROLE_LABEL = { edit: 'Sửa', view: 'Xem' };
 
@@ -29,6 +29,7 @@ export default function MembersTab({ trip, role }) {
   const linkRef = useRef(null);
   const [inviteErr, setInviteErr] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(null);   // member id
+  const [handoverTo, setHandoverTo] = useState(null);         // member id taking the expenses
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
@@ -36,6 +37,22 @@ export default function MembersTab({ trip, role }) {
   const shareLink = `${window.location.origin}/t/${trip.id}`;
 
   useEffect(() => () => clearTimeout(copyTimer.current), []);
+
+  /* Everything about handing the money over. `others` is who can receive it:
+     anyone still on the trip who has actually joined — an invitation nobody
+     has claimed is not somewhere to park real expenses. */
+  const owed = (m) => {
+    const rows = trip.expenses.filter((e) => e.payerId === m.id);
+    return { count: rows.length, total: rows.reduce((s, e) => s + e.amount, 0) };
+  };
+  const others = (m) => trip.members.filter((o) => o.id !== m.id && !o.pending);
+  const fallbackPayerFor = (m) => others(m)[0]?.id ?? null;
+
+  const removeMember = (m) => {
+    actions.removeMember(m.id, owed(m).count > 0 ? handoverTo : null);
+    setConfirmRemove(null);
+    setHandoverTo(null);
+  };
 
   const sendInvite = () => {
     const email = state.inviteEmail.trim();
@@ -90,7 +107,7 @@ export default function MembersTab({ trip, role }) {
       <h2 style={{ margin: '0 0 5px', fontSize: 27 }}>Thành viên &amp; quyền</h2>
       <p className="st-daysub" style={{ maxWidth: '58ch' }}>
         Ai cũng xem được lịch trình; chỉ người có quyền Sửa mới đổi được lịch và ngân sách.
-        <span className="st-en"> · Roles &amp; permissions</span>
+        <En> · Roles &amp; permissions</En>
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }} className="st-stagger">
@@ -125,7 +142,7 @@ export default function MembersTab({ trip, role }) {
             {isOwner && m.role !== 'owner' && (confirmRemove === m.id ? (
               <span className="st-confirm">
                 <button type="button" className="st-linkbtn st-danger"
-                  onClick={() => { actions.removeMember(m.id); setConfirmRemove(null); }}>
+                  onClick={() => removeMember(m)}>
                   {m.pending ? 'Huỷ lời mời?' : 'Gỡ hẳn?'}
                 </button>
                 <button type="button" className="st-linkbtn" onClick={() => setConfirmRemove(null)}>Giữ</button>
@@ -133,24 +150,42 @@ export default function MembersTab({ trip, role }) {
             ) : (
               <button type="button" className="st-linkbtn st-danger"
                 aria-label={`${m.pending ? 'Huỷ lời mời tới' : 'Gỡ'} ${m.name}`}
-                onClick={() => setConfirmRemove(m.id)}>
+                onClick={() => { setConfirmRemove(m.id); setHandoverTo(fallbackPayerFor(m)); }}>
                 {m.pending ? 'Huỷ mời' : 'Gỡ'}
               </button>
             ))}
+            {/* Only shown when there is actually money to move. Removing
+                somebody who never fronted anything should stay one click. */}
+            {isOwner && confirmRemove === m.id && owed(m).count > 0 && (
+              <div className="st-handover" role="group" aria-label={`Chuyển khoản chi của ${m.name}`}>
+                <span>
+                  {m.name} đã ứng <b>{owed(m).count} khoản</b> ({fmt(owed(m).total)}).
+                  Chuyển sang:
+                </span>
+                <select className="input" value={handoverTo ?? ''}
+                  aria-label={`Người nhận khoản chi của ${m.name}`}
+                  onChange={(e) => setHandoverTo(e.target.value)}>
+                  {others(m).map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
       {isOwner && (
         <p className="st-fineprint" style={{ maxWidth: '58ch' }}>
-          Gỡ một người khỏi chuyến đi không xoá khoản chi họ đã ứng — những khoản
-          đó chuyển sang người còn lại đầu tiên, nên hãy tất toán trước khi gỡ.
+          Gỡ một người khỏi chuyến đi không xoá khoản chi họ đã ứng. Nếu họ còn
+          khoản nào, SmartTrip sẽ hỏi chuyển cho ai trước khi gỡ — số dư của cả
+          nhóm đổi theo, nên tốt nhất là tất toán xong rồi hãy gỡ.
         </p>
       )}
 
       {isOwner && (
         <div className="field" style={{ marginTop: 32 }}>
-          <label htmlFor="st-invite">Mời qua email<span className="st-en"> · Invite by email</span></label>
+          <label htmlFor="st-invite">Mời qua email<En> · Invite by email</En></label>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <input className="input" id="st-invite" type="email" placeholder="banbe@example.com"
               style={{ flex: 1, minWidth: 220 }} value={state.inviteEmail}
@@ -168,7 +203,7 @@ export default function MembersTab({ trip, role }) {
       )}
 
       <div className="field" style={{ marginTop: 18 }}>
-        <label htmlFor="st-link">Hoặc chia sẻ liên kết<span className="st-en"> · Share link</span></label>
+        <label htmlFor="st-link">Hoặc chia sẻ liên kết<En> · Share link</En></label>
         <div style={{ display: 'flex', gap: 10 }}>
           <input className="input" id="st-link" ref={linkRef} readOnly value={shareLink}
             aria-describedby={state.copyErr ? 'st-link-err' : undefined}

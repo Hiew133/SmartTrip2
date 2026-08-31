@@ -1,48 +1,15 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useApp } from '../../store.jsx';
 import { dayLabel, fmt, hasCoords, newDay, newStop } from '../../data.js';
-import { Grip, Route, Seg, Plus, Check } from '../../components/ui.jsx';
+import { byTime, isOutOfOrder, moveItem, optimizeRoute, routeLengthKm } from '../../itinerary.js';
+import { Check, ChevronDown, ChevronUp, En, Grip, Plus, Route, Seg } from '../../components/ui.jsx';
 import { useFieldDraft } from '../../components/useFieldDraft.js';
-import MapView from '../../components/MapView.jsx';
-
-/* Nearest-neighbour reorder: keep the first stop, then always hop to the
-   closest remaining one. Each stop carries its own time along with it — the
-   route may change, but "18:30 · bàn hải sản đã đặt" stays at 18:30. Stops
-   with no coordinates yet are left at the end, in their original order. */
-function optimizeRoute(items) {
-  const located = items.filter(hasCoords);
-  const rest = items.filter((s) => !hasCoords(s));
-  if (located.length < 3) return items;
-
-  const left = located.slice(1);
-  const route = [located[0]];
-  while (left.length) {
-    const cur = route[route.length - 1];
-    let best = 0, bestD = Infinity;
-    left.forEach((s, i) => {
-      const d = (s.lat - cur.lat) ** 2 + (s.lng - cur.lng) ** 2;
-      if (d < bestD) { bestD = d; best = i; }
-    });
-    route.push(left.splice(best, 1)[0]);
-  }
-  return [...route, ...rest];
-}
-
-const asMinutes = (s) => {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s.time || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-};
-
-const isOutOfOrder = (items) => items.some((it, i) => {
-  if (i === 0) return false;
-  const a = asMinutes(items[i - 1]), b = asMinutes(it);
-  return a !== null && b !== null && b < a;
-});
-
-const byTime = (items) => items
-  .map((s, i) => ({ s, i }))
-  .sort((x, y) => (asMinutes(x.s) ?? 1e9) - (asMinutes(y.s) ?? 1e9) || x.i - y.i)
-  .map(({ s }) => s);
+import PlaceSearch from '../../components/PlaceSearch.jsx';
+/* Leaflet is 150 kB and only this tab needs it. People land on the trip list
+   first, so loading it lazily takes it off the critical path for every screen
+   before this one. The fallback is the same box at the same height, so nothing
+   moves when it arrives. */
+const MapView = lazy(() => import('../../components/MapView.jsx'));
 
 /* Edits are held locally and written once, on Xong — a stop lives inside its
    day document, so committing per keystroke would rewrite the whole day. */
@@ -60,9 +27,20 @@ function StopEditor({ stop, onSave, onRemove }) {
         </label>
         <label className="st-stopedit-wide">
           <span>Tên điểm dừng</span>
-          <input className="input" autoFocus value={d.name} placeholder="vd: Bún chả cá Hờn"
-            onChange={(e) => set({ name: e.target.value })}
-            onKeyDown={(e) => e.key === 'Enter' && onSave(d)} />
+          <PlaceSearch
+            value={d.name} autoFocus placeholder="vd: Bún chả cá Hờn"
+            onText={(name) => set({ name })}
+            onEnter={() => onSave(d)}
+            /* Picking is the only way a hand-added stop ever gets coordinates.
+               The address goes into the note only when the note is empty —
+               it is the person's field, not a place to write over. */
+            onPick={(p) => set({
+              name: p.name,
+              lat: p.lat,
+              lng: p.lng,
+              note: d.note.trim() ? d.note : p.address,
+            })}
+          />
         </label>
         <label>
           <span>Dự chi (₫)</span>
@@ -77,9 +55,19 @@ function StopEditor({ stop, onSave, onRemove }) {
         </label>
       </div>
       <div className="st-stopedit-foot">
-        <span className="text-muted" style={{ fontSize: 12 }}>
-          {hasCoords(d) ? 'Đã có toạ độ trên bản đồ' : 'Chưa có toạ độ — điểm này chưa hiện trên bản đồ'}
-        </span>
+        {hasCoords(d) ? (
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            Đã ghim tại {d.lat.toFixed(4)}, {d.lng.toFixed(4)}
+            {' · '}
+            <button type="button" className="st-linkbtn" onClick={() => set({ lat: null, lng: null })}>
+              bỏ toạ độ
+            </button>
+          </span>
+        ) : (
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            Chưa có toạ độ — chọn một gợi ý ở ô tên để ghim lên bản đồ
+          </span>
+        )}
         <span style={{ flex: 1 }} />
         <button type="button" className="btn btn-ghost st-danger" onClick={onRemove}>Xoá điểm dừng</button>
         <button type="button" className="btn btn-primary" onClick={() => onSave(d)}>
@@ -130,16 +118,33 @@ export default function ItineraryTab({ trip, editable }) {
 
   const onDrop = (to) => {
     if (dragIdx < 0 || dragIdx === to) return;
-    const items = day.items.slice();
-    const [moved] = items.splice(dragIdx, 1);
-    items.splice(to, 0, moved);
-    reorder(items, 'đổi thứ tự');
+    reorder(moveItem(day.items, dragIdx, to), 'đổi thứ tự');
+  };
+
+  /* Drag-and-drop is mouse-only: HTML5 DnD does not fire for touch, and there
+     is no keyboard equivalent. These two buttons are the same move by another
+     route, so a phone and a screen reader get the feature too. */
+  const nudge = (from, delta) => {
+    const to = from + delta;
+    if (to < 0 || to >= day.items.length) return;
+    reorder(moveItem(day.items, from, to), delta < 0 ? 'chuyển lên' : 'chuyển xuống');
+    patch({ focusIdx: to });
   };
 
   const addDay = async () => {
     await actions.addDay(newDay({ place: `Ngày ${trip.days.length + 1}` }));
     patch({ day: trip.days.length, focusIdx: -1 });
     setUndo(null); setEditId(null);
+  };
+
+  /* Moving a day carries the selection with it, so the person keeps looking at
+     the day they just moved rather than at whatever slid into its place. */
+  const moveDay = (delta) => {
+    const to = dayIdx + delta;
+    if (to < 0 || to >= trip.days.length) return;
+    actions.reorderDays(moveItem(trip.days, dayIdx, to).map((d) => d.id));
+    patch({ day: to, focusIdx: -1 });
+    setUndo(null); setEditId(null); setConfirmDay(false);
   };
 
   const removeDay = () => {
@@ -166,6 +171,9 @@ export default function ItineraryTab({ trip, editable }) {
   };
 
   const outOfOrder = day ? isOutOfOrder(day.items) : false;
+  /* Straight-line, not driving distance — but a real number in kilometres,
+     which is what makes "Tối ưu tuyến đường" checkable by eye. */
+  const routeKm = day ? routeLengthKm(day.items) : 0;
 
   return (
     <div className="st-2col">
@@ -223,6 +231,20 @@ export default function ItineraryTab({ trip, editable }) {
               ) : (
                 <h2 className="st-daytitle">{day.place || `Ngày ${dayIdx + 1}`}</h2>
               )}
+              {editable && trip.days.length > 1 && (
+                <span className="st-stop-move st-daymove">
+                  <button type="button" disabled={dayIdx === 0}
+                    aria-label={`Chuyển ngày ${dayIdx + 1} lên trước`}
+                    onClick={() => moveDay(-1)}>
+                    <ChevronUp width="15" height="15" />
+                  </button>
+                  <button type="button" disabled={dayIdx === trip.days.length - 1}
+                    aria-label={`Chuyển ngày ${dayIdx + 1} xuống sau`}
+                    onClick={() => moveDay(1)}>
+                    <ChevronDown width="15" height="15" />
+                  </button>
+                </span>
+              )}
               {editable && (confirmDay ? (
                 <span className="st-confirm">
                   <button type="button" className="btn btn-ghost st-danger" onClick={removeDay}>Xoá cả ngày?</button>
@@ -235,8 +257,9 @@ export default function ItineraryTab({ trip, editable }) {
             </div>
             <p className="st-daysub">
               {dayLabel(trip.startDate, dayIdx)} · {day.items.length} điểm dừng · dự chi {fmt(daySpend)}
+              {routeKm >= 0.1 && ` · quãng đường ${routeKm < 10 ? routeKm.toFixed(1) : Math.round(routeKm)} km`}
               {day.items.length > 0 && ' — chạm để định vị trên bản đồ'}
-              {day.items.length > 0 && editable && ', kéo để đổi thứ tự'}
+              {day.items.length > 0 && editable && ', dùng nút ↑ ↓ hoặc kéo để đổi thứ tự'}
             </p>
 
             {undo && (
@@ -273,6 +296,11 @@ export default function ItineraryTab({ trip, editable }) {
                     {editId === it.id ? (
                       <StopEditor stop={it} onSave={saveStop} onRemove={() => removeStop(it.id)} />
                     ) : (
+                      /* The row itself is not a control: it holds three of
+                         them, and a button inside a button is not reachable by
+                         keyboard or announced correctly. Clicking the row still
+                         locates the stop for pointer users; the number badge is
+                         the same action, reachable by Tab. */
                       <div
                         className={[
                           'st-stop',
@@ -285,12 +313,14 @@ export default function ItineraryTab({ trip, editable }) {
                         onDragEnd={() => { setDragIdx(-1); setOverIdx(-1); }}
                         onDragOver={(e) => { e.preventDefault(); setOverIdx(i); }}
                         onDrop={(e) => { e.preventDefault(); onDrop(i); setDragIdx(-1); setOverIdx(-1); }}
-                        role="button" tabIndex={0} aria-label={`Xem ${it.name || 'điểm dừng'} trên bản đồ`}
-                        aria-pressed={state.focusIdx === i}
-                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), patch({ focusIdx: i }))}
                         onClick={() => patch({ focusIdx: i })}>
                         {editable && <Grip className="st-grip" />}
-                        <span className="st-stop-num">{i + 1}</span>
+                        <button type="button" className="st-stop-num"
+                          aria-label={`Xem ${it.name || 'điểm dừng'} trên bản đồ`}
+                          aria-pressed={state.focusIdx === i}
+                          onClick={(e) => { e.stopPropagation(); patch({ focusIdx: i }); }}>
+                          {i + 1}
+                        </button>
                         <span className="st-stop-time">{it.time}</span>
                         <span>
                           <span className="st-stop-name">{it.name || 'Điểm dừng chưa đặt tên'}</span>
@@ -299,6 +329,20 @@ export default function ItineraryTab({ trip, editable }) {
                         <span className={`st-stop-cost ${it.cost ? '' : 'free'}`}>
                           {it.cost ? fmt(it.cost) : 'Miễn phí'}
                         </span>
+                        {editable ? (
+                          <span className="st-stop-move">
+                            <button type="button" disabled={i === 0}
+                              aria-label={`Chuyển ${it.name || 'điểm dừng'} lên trên`}
+                              onClick={(e) => { e.stopPropagation(); nudge(i, -1); }}>
+                              <ChevronUp width="15" height="15" />
+                            </button>
+                            <button type="button" disabled={i === day.items.length - 1}
+                              aria-label={`Chuyển ${it.name || 'điểm dừng'} xuống dưới`}
+                              onClick={(e) => { e.stopPropagation(); nudge(i, 1); }}>
+                              <ChevronDown width="15" height="15" />
+                            </button>
+                          </span>
+                        ) : <span />}
                         {editable ? (
                           <button type="button" className="st-stop-edit"
                             aria-label={`Sửa ${it.name || 'điểm dừng'}`}
@@ -323,10 +367,12 @@ export default function ItineraryTab({ trip, editable }) {
       </section>
 
       <figure className="st-mapfig">
-        <MapView stops={day?.items ?? []} focusIdx={state.focusIdx} style={{ height: 580 }} />
+        <Suspense fallback={<div className="st-mapwrap" style={{ height: 580 }} />}>
+          <MapView stops={day?.items ?? []} focusIdx={state.focusIdx} style={{ height: 580 }} />
+        </Suspense>
         <figcaption style={{ marginTop: 10, fontSize: 12 }}>
           Bản đồ © OpenStreetMap · ghim đang chọn đổi sang màu rêu
-          <span className="st-en"> · tap a stop to locate it</span>
+          <En> · tap a stop to locate it</En>
         </figcaption>
       </figure>
     </div>

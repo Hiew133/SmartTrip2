@@ -13,6 +13,19 @@ export default defineConfig({
      production entry chunk. */
   optimizeDeps: { include: ['firebase/ai'] },
   build: {
+    /* 567 kB is firebase-firestore, and it is vendor code in its own chunk:
+       nothing in it can be split out, it changes only when the SDK version
+       does, and it is cached across deploys. Splitting further does not make
+       it smaller — only not shipping it would, and that is blocked on
+       backend/firebase.js importing getFirestore statically so that db() can
+       stay synchronous for every call site in backend/firestore.js. Moving
+       that import into the repository and loading the repository with a
+       dynamic import would drop the whole chunk in demo mode.
+
+       Until then the number is stated rather than warned about. The limit is
+       set just above the real figure on purpose: if a chunk grows past this,
+       something new has landed and it is worth looking at again. */
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         /* Firebase and Leaflet change far less often than the app itself, so

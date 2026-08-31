@@ -3,7 +3,7 @@ import { useApp, useTripsReady } from '../store.jsx';
 import {
   SEED_TRIPS, STATUS_LABEL, daysUntil, fmt, formatRange, photo, stopCount, tripStatus, tripTotal,
 } from '../data.js';
-import { Compass, Photo, Plus, Search, muted } from '../components/ui.jsx';
+import { Compass, En, Photo, Plus, Search, muted } from '../components/ui.jsx';
 
 const STATUS = ['Tất cả', 'Sắp tới', 'Nháp', 'Đã đi'];
 
@@ -111,7 +111,7 @@ export default function Trips() {
     <div className="st-page">
       <header className="st-head st-rise">
         <div>
-          <span className="st-eyebrow">Sổ chuyến đi<span className="st-en">&nbsp;· My trips</span></span>
+          <span className="st-eyebrow">Sổ chuyến đi<En>&nbsp;· My trips</En></span>
           <h1 className="st-display">Chuyến đi của tôi</h1>
           <p className="st-lede" style={{ margin: '14px 0 0' }}>{leadLine(trips)}</p>
         </div>

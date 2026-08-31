@@ -7,8 +7,11 @@ dự án "SmartTrip UI Mockups"), lấy cảm hứng từ Wanderlog.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # build production vào dist/
+npm run dev        # http://localhost:5173
+npm run build      # build production vào dist/
+npm run lint       # eslint — phải 0 lỗi trước khi commit
+npm test           # test logic thuần, chạy trong vài giây, không cần gì thêm
+npm run test:rules # test Security Rules trên emulator (cần JDK 21+)
 ```
 
 ## Màn hình
@@ -41,18 +44,29 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
 
 - **Nhiều chuyến đi** — mỗi chuyến có lịch trình, khoản chi, thành viên và ngân sách riêng;
   tạo chuyến trống rồi thêm ngày, thêm điểm dừng, đặt ngày đi/ngày về ngay trong tab Lịch trình.
-- **Lịch trình theo ngày** — kéo-thả sắp xếp lại điểm dừng, nút **Tối ưu tuyến đường**
-  (nearest-neighbour). Mỗi điểm dừng giữ nguyên giờ của chính nó khi đổi thứ tự, kèm
-  **hoàn tác** một bước và gợi ý "sắp lại theo giờ" khi thứ tự lệch khỏi giờ đã ghi.
+- **Lịch trình theo ngày** — sắp xếp lại điểm dừng bằng nút **↑ ↓** (chạy trên cả cảm ứng
+  và bàn phím) hoặc kéo-thả, đổi thứ tự cả ngày, và nút **Tối ưu tuyến đường**
+  (nearest-neighbour trên khoảng cách haversine thật). Mỗi điểm dừng giữ nguyên giờ của
+  chính nó khi đổi thứ tự, kèm **hoàn tác** một bước và gợi ý "sắp lại theo giờ" khi thứ
+  tự lệch khỏi giờ đã ghi. Mỗi ngày hiện quãng đường tính bằng km.
+- **Tìm kiếm địa điểm** ngay trong ô tên điểm dừng — chọn một gợi ý là điểm dừng có toạ độ
+  thật và lên bản đồ. Mặc định dùng Nominatim (OpenStreetMap), không cần đăng ký gì;
+  điền `VITE_GOONG_API_KEY` để đổi sang Goong, sát với địa chỉ Việt Nam hơn.
 - **Bản đồ Leaflet + OpenStreetMap** phủ màu giấy ấm theo design system; ghim tròn đánh số,
   tuyến đường nét đứt màu đất nung; tự fallback sang mirror / nền chấm khi tile không tải được.
   Điểm dừng chưa có toạ độ được nói rõ là chưa hiện trên bản đồ.
+- **Xuất PDF** — nút trên màn chi tiết mở hộp thoại In của trình duyệt với một bản riêng:
+  **cả chuyến**, mọi ngày một lượt (màn hình chỉ hiện một ngày), kèm khoản chi và số dư.
 - **Ngân sách** — bảng khoản chi (thêm / sửa / xoá), ngân sách kế hoạch sửa được, thanh tiến độ,
   số dư từng người sau chia đều, và **tất toán gọn nhất** (greedy — thường n−1 giao dịch,
   không đảm bảo tối thiểu tuyệt đối), đánh dấu đã trả.
 - **Thành viên & quyền** — Chủ chuyến đi / Sửa / Xem, mời qua email (thêm trạng thái
   "Chờ phản hồi"), chia sẻ liên kết + sao chép (báo lỗi thật khi trình duyệt chặn clipboard).
-- **Phụ đề tiếng Anh** bật/tắt (nút `EN` trên nav) — hỗ trợ khách quốc tế.
+  Gỡ một người còn khoản chi thì SmartTrip hỏi chuyển khoản đó cho ai, thay vì tự đẩy sang
+  người đầu danh sách.
+- **Phụ đề tiếng Anh** bật/tắt (nút `EN` trên nav) — hỗ trợ khách quốc tế. Đây là phụ đề
+  cạnh nhãn tiếng Việt, không phải dịch toàn bộ giao diện; mỗi phụ đề mang `lang="en"` nên
+  trình đọc màn hình phát âm đúng tiếng Anh.
 - **Tìm kiếm & lọc chuyến đi** trên màn Chuyến đi (theo từ khoá và trạng thái).
 - **Toast thông báo** khi tối ưu tuyến, ghi khoản chi, sao chép liên kết, gửi lời mời.
 - **Đăng nhập thật** bằng Firebase Auth (Google, Email/Password); mỗi người chỉ thấy chuyến đi
@@ -112,9 +126,13 @@ Có sẵn bộ test chạy trên emulator:
 npm run test:rules
 ```
 
-27 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền hay
-sửa được danh sách thành viên không, toàn bộ luồng nhận lời mời, và luồng tự rời chuyến
-— kể cả các trường hợp cố tình lách.
+39 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền hay
+sửa được danh sách thành viên không, toàn bộ luồng nhận lời mời, luồng tự rời chuyến —
+kể cả các trường hợp cố tình lách — và **shape của dữ liệu ghi vào**: tiêu đề quá dài,
+`plan` âm, `settled` là mảng thay vì map, một ngày nhồi hàng trăm điểm dừng, số tiền là
+chuỗi. Nhóm cuối này quan trọng vì rules chỉ chặn được những gì nó gọi tên: người có
+quyền Sửa là bên thứ ba đối với cơ sở dữ liệu, và trước đây không gì ngăn họ ghi một
+document rác vào `days`/`expenses`.
 
 ### 4. Bật Firebase AI Logic (Trợ lý AI)
 
@@ -127,27 +145,37 @@ Firebase **từ chối phục vụ AI Logic cho project chưa enforce App Check*
 `403 ... you must enforce Firebase App Check`. Auth và Firestore vẫn chạy bình thường,
 chỉ Trợ lý AI bị khoá.
 
-1. Tạo cặp khoá reCAPTCHA **trước** — Firebase không tạo hộ. Vào
-   [google.com/recaptcha/admin/create](https://www.google.com/recaptcha/admin/create):
-   chọn **reCAPTCHA v3**, thêm domain `localhost` (và domain deploy nếu có).
-   Xong sẽ có **hai** khoá:
+Provider bắt buộc là **reCAPTCHA Enterprise**. reCAPTCHA classic (v3) đã bị Google khai
+tử cho luồng này — chọn nó trong Firebase Console chỉ nhận lại
+`reCAPTCHA is deprecated, please use reCAPTCHA Enterprise instead.` Enterprise **không cần
+bật billing**, chạy được trên gói Spark miễn phí, và **không có secret key** — chỉ một
+**site key** công khai.
 
-   | Khoá | Đi đâu | Bí mật? |
-   |---|---|---|
-   | **Site key** | `.env.local` của dự án | Không — nó nằm sẵn trong mọi trang dùng reCAPTCHA |
-   | **Secret key** | Chỉ dán vào Firebase Console ở bước 2 | **Có** — không bao giờ đưa vào code hay `.env` |
-
-2. **Build → App Check → Apps** → chọn app web `SmartTrip` → **reCAPTCHA v3** →
-   dán **secret key** vào đó → Save.
-3. Điền **site key** vào `.env.local`:
+1. Tạo khoá **trước** — Firebase không tạo hộ. Vào
+   [Google Cloud Console → Fraud Defense](https://console.cloud.google.com/security/recaptcha),
+   đúng project của bạn → **Create key**:
+   - Platform: **Website**
+   - Type: **Score-based** (App Check bắt buộc score-based, không phải checkbox)
+   - Domains: domain deploy của bạn, ví dụ `<project>.web.app` và `<project>.firebaseapp.com`
+   - **Không thêm `localhost`** — tài liệu Firebase nói rõ đừng bỏ localhost vào khoá thật.
+     Local dev đi bằng debug token ở bước 4.
+2. Copy **site key** → **Build → App Check → Apps** → chọn app web `SmartTrip` →
+   **reCAPTCHA Enterprise** → dán vào ô *reCAPTCHA Enterprise site key* → TTL để nguyên
+   1 hour → **Save**.
+3. Điền vào `.env.local` — cả hai dòng, cờ Enterprise là bắt buộc:
    ```
    VITE_FIREBASE_APPCHECK_SITE_KEY=<site key>
+   VITE_FIREBASE_APPCHECK_ENTERPRISE=true
    ```
-   (Nếu bạn chọn reCAPTCHA Enterprise thì thêm `VITE_FIREBASE_APPCHECK_ENTERPRISE=true`.)
 4. Chạy `npm run dev`, mở Console trình duyệt: ở chế độ dev app tự bật debug token và in ra
    một chuỗi UUID. Copy nó vào **App Check → Apps → ⋮ → Manage debug tokens**, nếu không
    thì localhost sẽ bị chặn.
-5. **App Check → APIs** → bật **Enforce** cho *Firebase AI Logic*.
+
+   Debug token **là bí mật** — đừng commit, đừng chia sẻ. Nó gắn theo từng máy và từng
+   trình duyệt: đổi máy, đổi trình duyệt, hoặc xoá storage là sinh token mới và phải đăng
+   ký lại.
+5. **App Check → APIs** → bật **Enforce** cho *Firebase AI Logic*. Đây mới là bước mở khoá:
+   chưa enforce thì project vẫn trả 403 dù App Check đã cài đúng.
 
 Code khởi tạo App Check nằm trong [`src/backend/firebase.js`](src/backend/firebase.js), chạy
 ngay sau `initializeApp` để Auth và Firestore cũng gửi kèm token — nếu sau này bạn enforce
@@ -160,7 +188,29 @@ Trợ lý dùng **structured output**: schema JSON được gửi kèm request n
 đúng khuôn, không phải bóc tách chuỗi. Mọi thứ model trả về vẫn đi qua đúng bộ lọc
 `cleanStop` như dữ liệu đọc từ Firestore trước khi được đưa vào mô hình chuyến đi.
 
-### 5. Deploy (tuỳ chọn)
+### 5. Tìm kiếm địa điểm (không bắt buộc)
+
+Ô **Tên điểm dừng** gợi ý địa điểm thật và điền toạ độ khi bạn chọn một gợi ý. Không cấu
+hình gì thì nó dùng **Nominatim** của OpenStreetMap: miễn phí, không cần tài khoản, chạy
+được ngay trên một bản clone mới. Đổi lại, Nominatim yêu cầu **tối đa một request mỗi
+giây** — app tự chờ 650 ms sau phím cuối và huỷ request cũ khi bạn gõ tiếp, nên đừng gỡ
+phần debounce trong [`src/components/PlaceSearch.jsx`](src/components/PlaceSearch.jsx).
+
+Muốn kết quả sát với địa chỉ và tên quán ở Việt Nam hơn thì lấy khoá ở
+[account.goong.io](https://account.goong.io) rồi thêm vào `.env.local`:
+
+```
+VITE_GOONG_API_KEY=<khoá>
+```
+
+Có khoá là tự đổi provider, không phải sửa gì thêm. Khoá này đi trong URL từ trình duyệt
+nên nó **công khai** — giới hạn domain cho nó trong bảng điều khiển Goong.
+
+Dù dùng provider nào, kết quả trả về vẫn đi qua bộ đọc trong
+[`src/places.js`](src/places.js) trước khi vào dữ liệu chuyến đi: thiếu toạ độ, toạ độ
+ngoài quả đất, hay thiếu tên thì bị bỏ chứ không hiện thành một dòng chết.
+
+### 6. Deploy (tuỳ chọn)
 
 ```bash
 npm run build
@@ -197,9 +247,12 @@ Những con số như số điểm dừng, tổng chi, trạng thái chuyến (N
 
 ```
 src/
-  organic.css          # design system "Organic" (token + component classes)
+  organic.css          # design system "Organic" (token + component classes) + bản in
   data.js              # seed 3 chuyến + helper ngày tháng, tiền tệ, factory
-  store.jsx            # AppProvider (session + state + actions), computeBudget, settleKey
+  store.jsx            # AppProvider (session + state + actions)
+  budget.js            # tính tiền: số dư, tất toán gọn nhất, khoá "đã trả"
+  itinerary.js         # haversine, tối ưu tuyến, thứ tự theo giờ, di chuyển một dòng
+  places.js            # dựng URL và đọc kết quả của dịch vụ tìm địa điểm
   App.jsx              # nav + điều hướng màn hình
   backend/
     config.js          # đọc biến môi trường, cờ firebaseEnabled
@@ -208,15 +261,24 @@ src/
     schema.js          # kiểm tra và vá shape mọi dữ liệu đọc từ ngoài vào
     firestore.js       # repository chạy trên Firestore
     local.js           # repository chạy trên localStorage (chế độ thử)
+    places.js          # gọi mạng cho tìm địa điểm (Nominatim hoặc Goong)
     ai.js              # sinh lịch trình bằng Firebase AI Logic (hoặc mock)
     index.js           # chọn repository theo cấu hình
-  components/          # ui.jsx (Seg, Avatar, icons), MapView, ExpenseDialog, ErrorBoundary, useFieldDraft
+  components/          # ui.jsx (Seg, Avatar, En, icons), MapView, PlaceSearch,
+                       # TripPrintSheet, ExpenseDialog, ErrorBoundary, useFieldDraft
   screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab), AIDesk
 tests/
+  unit/*.test.mjs            # logic thuần — `npm test`, không cần emulator
   firestore-rules.test.mjs   # kiểm thử Security Rules trên emulator
+.github/workflows/ci.yml     # lint + unit + build, và rules trên một job riêng có JDK 21
 firestore.rules        # ai đọc được gì, ai ghi được gì
 firebase.json          # rules, hosting, cổng emulator
 ```
+
+**Bốn file `.js` ở đầu `src/` đều là hàm thuần, không React, không backend.** Đó là chỗ
+sai lầm khó thấy nhất — một lỗi trong `budget.js` là tiền thật chia sai — nên chúng nằm
+ngoài `store.jsx` (có JSX, `node --test` không import được) để test chạy được bằng Node
+trần, không cần thêm thư viện nào.
 
 `screens/` không bao giờ gọi thẳng Firestore. Nó gọi `actions` trên store, store gọi
 repository, và repository có hai bản cài đặt cùng một giao diện — Firestore hoặc localStorage.
@@ -226,9 +288,12 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 
 1. ~~Firebase Auth + Firestore + Security Rules~~ — xong, xem mục **Nối Firebase**.
 2. ~~Gemini cho Trợ lý AI~~ — xong, qua Firebase AI Logic.
-3. **Tìm kiếm địa điểm**: Google Places hoặc **Goong API** để điểm dừng thêm tay có toạ độ thật.
-4. **Directions API** (Google/Goong) thay cho tối ưu nearest-neighbour hiện tại.
-5. Xuất PDF, i18n đầy đủ, app Flutter đồng bộ Firebase.
+3. ~~Tìm kiếm địa điểm~~ — xong: Nominatim mặc định, Goong khi có khoá.
+4. **Directions API** (Google/Goong) thay cho khoảng cách đường chim bay hiện tại.
+   `optimizeRoute` trong [`src/itinerary.js`](src/itinerary.js) nhận một hàm `distance`
+   làm tham số, nên chỗ nối đã sẵn — cần một hàm trả khoảng cách đường bộ giữa hai điểm,
+   lấy sẵn toàn bộ trước khi gọi vì hàm này phải đồng bộ.
+5. ~~Xuất PDF~~ — xong. Còn lại: i18n đầy đủ, app Flutter đồng bộ Firebase.
 
 ## Còn nợ
 
@@ -237,5 +302,13 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 - Người tự rời chuyến có thể mang theo dòng thành viên của người khác: Security Rules
   ghim được *bao nhiêu* dòng ra đi chứ không ghim được *dòng nào*. Không phải leo thang
   quyền, và chủ chuyến thêm lại được — chi tiết trong CLAUDE.md.
-- Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, và chưa có cách sắp xếp bằng bàn phím.
-- Ngoài bộ test Security Rules thì chưa có test nào khác, và chưa có CI.
+- **Nút `EN` là phụ đề, không phải i18n.** Dịch toàn bộ giao diện vẫn còn nguyên đó.
+- **Trần quy mô đã biết:** màn Chuyến đi hiện số điểm dừng và tổng chi của *mọi* chuyến,
+  và cả hai được tính từ subcollection chứ không lưu sẵn — nên `subscribeTrips` mở hai
+  listener cho mỗi chuyến. Vài chục chuyến thì ổn; trên mức đó phải đếm sẵn trên document
+  chuyến đi, tức là đảo lại một quy tắc kiến trúc chứ không phải chỉnh nhẹ. Ở chế độ dev
+  app tự cảnh báo khi vượt ngưỡng.
+- **`firebase-firestore` 567 kB vẫn nằm trong bundle kể cả ở chế độ thử**, vì
+  `backend/firebase.js` import tĩnh `getFirestore`. Bỏ được nó thì phải chuyển import đó
+  vào `backend/firestore.js` rồi nạp repository bằng dynamic import — xem chú thích trong
+  [`vite.config.js`](vite.config.js).

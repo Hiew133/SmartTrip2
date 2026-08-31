@@ -82,12 +82,38 @@ service cloud.firestore {
             && incoming().members.toSet().difference(trip().members.toSet()).size() == 0;
       }
 
+      /* Shape checks, not access checks — the difference matters because these
+         apply to the owner too. An editor with a legitimate write is still a
+         third party as far as the database is concerned: nothing stops them
+         sending a 200 kB title or a `plan` of "xin chào" except this.
+
+         What rules cannot do is walk a list, so `members` is checked for being
+         a list of a sane length and no further; the per-row shape is repaired
+         on the way in by backend/schema.js. Sizes are generous on purpose —
+         they are there to stop absurdity, not to second-guess a long trip name.
+
+         Every optional field goes through .get() with a default so a document
+         written by an older build, before the field existed, stays editable. */
       function wellFormed() {
         return incoming().keys().hasAll(['title', 'members', 'memberIds', 'roles', 'ownerId'])
             && incoming().title is string
+            && incoming().title.size() <= 200
             && incoming().members is list
+            && incoming().members.size() <= 50
             && incoming().memberIds is list
-            && incoming().memberIds.size() <= 50;
+            && incoming().memberIds.size() <= 50
+            && incoming().roles is map
+            && incoming().get('pendingEmails', []) is list
+            && incoming().get('pendingEmails', []).size() <= 50
+            && incoming().get('settled', {}) is map
+            && incoming().get('plan', 0) is number
+            && incoming().get('plan', 0) >= 0
+            && incoming().get('body', '') is string
+            && incoming().get('body', '').size() <= 2000
+            && incoming().get('alt', '') is string
+            && incoming().get('alt', '').size() <= 300
+            && incoming().get('seed', '') is string
+            && incoming().get('seed', '').size() <= 100;
       }
 
       /* Claiming an invitation: the one write a non-member may make. It has to
@@ -129,14 +155,45 @@ service cloud.firestore {
       function canRead()     { return signedIn() && uid() in parent().memberIds; }
       function canWrite()    { return canRead() && parent().roles[uid()] in ['owner', 'edit']; }
 
+      /* The children were unvalidated until now: `allow write: if canWrite()`
+         let anyone with edit rights put anything of any shape in here. The
+         client repairs what it reads, so it never showed — but repairing on
+         read is the wrong end, and it does nothing about a document written
+         large enough to be a problem for everyone who loads the trip.
+
+         Stops live inside the day document as `items`, and rules cannot walk a
+         list to check each one, so the cap is on how many there may be. */
+      function dayWellFormed() {
+        return incoming().get('items', []) is list
+            && incoming().get('items', []).size() <= 100
+            && incoming().get('place', '') is string
+            && incoming().get('place', '').size() <= 200
+            && incoming().get('seed', '') is string
+            && incoming().get('seed', '').size() <= 100
+            && incoming().get('order', 0) is number;
+      }
+
+      function expenseWellFormed() {
+        return incoming().get('name', '') is string
+            && incoming().get('name', '').size() <= 200
+            && incoming().get('cat', '') is string
+            && incoming().get('cat', '').size() <= 60
+            && incoming().get('payerId', '') is string
+            && incoming().get('payerId', '').size() <= 64
+            && incoming().amount is number
+            && incoming().amount >= 0;
+      }
+
       match /days/{dayId} {
         allow read: if canRead();
-        allow write: if canWrite();
+        allow create, update: if canWrite() && dayWellFormed();
+        allow delete: if canWrite();
       }
 
       match /expenses/{expenseId} {
         allow read: if canRead();
-        allow write: if canWrite();
+        allow create, update: if canWrite() && expenseWellFormed();
+        allow delete: if canWrite();
       }
     }
 

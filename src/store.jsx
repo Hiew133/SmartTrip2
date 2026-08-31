@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { CATEGORIES, first, newTrip } from './data.js';
+import { CATEGORIES, newTrip } from './data.js';
 import { firebaseEnabled, refreshUser, repo, subscribeAuth } from './backend/index.js';
 
 const PREF_KEY = 'smarttrip-prefs';
@@ -259,9 +259,20 @@ export function AppProvider({ children }) {
         return ok === true;
       },
 
-      addDay: (day) => onTrip('thêm ngày', (id) => repo.addDay(id, day)),
+      // a new day goes on the end; the store is what knows where the end is
+      addDay: (day) => onTrip('thêm ngày', (id, trip) => repo.addDay(id, day, trip.days.length)),
       updateDay: (dayId, fields) => onTrip('sửa ngày', (id) => repo.updateDay(id, dayId, fields)),
-      removeDay: (dayId) => onTrip('xoá ngày', (id) => repo.removeDay(id, dayId)),
+      /* Deleting leaves a hole in the numbering, and the next addDay picks its
+         order from the day count — so without closing the hole, day 4 of a
+         trip that once had five would collide with an existing order and the
+         two would sort arbitrarily. Renumbering the survivors keeps `order`
+         meaning exactly "index in the trip". */
+      removeDay: (dayId) => onTrip('xoá ngày', async (id, trip) => {
+        await repo.removeDay(id, dayId);
+        const rest = trip.days.filter((d) => d.id !== dayId).map((d) => d.id);
+        if (rest.length) await repo.reorderDays(id, rest);
+      }),
+      reorderDays: (orderedIds) => onTrip('đổi thứ tự ngày', (id) => repo.reorderDays(id, orderedIds)),
 
       addExpense: (expense) => onTrip('thêm khoản chi', (id) => repo.addExpense(id, expense)),
       updateExpense: (expId, fields) => onTrip('sửa khoản chi', (id) => repo.updateExpense(id, expId, fields)),
@@ -285,7 +296,17 @@ export function AppProvider({ children }) {
       setSettled: (settled) => onTrip('đánh dấu đã trả', (id) => repo.setSettled(id, settled)),
       addMember: (member) => onTrip('gửi lời mời', (id) => repo.addMember(id, member)),
       setMemberRole: (memberId, role) => onTrip('đổi quyền', (id) => repo.setMemberRole(id, memberId, role)),
-      removeMember: (memberId) => onTrip('gỡ thành viên', (id) => repo.removeMember(id, memberId)),
+      /* Taking someone off the trip has to answer "what happens to the money
+         they fronted?" first. Left alone, cleanTrip silently re-homes their
+         expenses onto whichever member happens to be first in the list — the
+         balances change and nobody is told. So the expenses move deliberately,
+         and they move *before* the seat disappears: if the second write fails,
+         the trip is merely mid-handover rather than quietly mis-attributed. */
+      removeMember: (memberId, moveExpensesTo = null) => onTrip('gỡ thành viên', async (id, trip) => {
+        const theirs = trip.expenses.filter((e) => e.payerId === memberId).map((e) => e.id);
+        if (theirs.length && moveExpensesTo) await repo.reassignPayer(id, theirs, moveExpensesTo);
+        await repo.removeMember(id, memberId);
+      }),
 
       /* Leaving is the one member change you make to yourself, so like
          deleting a trip it ends with nothing left to look at. */
@@ -336,46 +357,3 @@ export function useTripRole(trip) {
 }
 
 export const canEdit = (role) => role === 'owner' || role === 'edit';
-
-/* Shared derived budget math: balances per core member and the minimal
-   settle-up transfer list (greedy largest-debtor → largest-creditor). */
-export function computeBudget(trip) {
-  if (!trip) return { core: [], total: 0, share: 0, bal: [], transfers: [] };
-  const core = trip.members.filter((m) => !m.pending);
-  const total = trip.expenses.reduce((s, e) => s + e.amount, 0);
-  const share = core.length ? total / core.length : 0;
-
-  const paid = new Map(core.map((m) => [m.id, 0]));
-  trip.expenses.forEach((e) => {
-    if (paid.has(e.payerId)) paid.set(e.payerId, paid.get(e.payerId) + e.amount);
-  });
-  const bal = core.map((m) => ({ id: m.id, name: first(m.name), amt: paid.get(m.id) - share }));
-
-  const debt = bal.filter((b) => b.amt < -0.5).map((b) => ({ ...b, a: -b.amt })).sort((x, y) => y.a - x.a);
-  const cred = bal.filter((b) => b.amt > 0.5).map((b) => ({ ...b, a: b.amt })).sort((x, y) => y.a - x.a);
-  const transfers = [];
-  let di = 0, ci = 0;
-  while (di < debt.length && ci < cred.length) {
-    const x = Math.min(debt[di].a, cred[ci].a);
-    transfers.push({ fromId: debt[di].id, toId: cred[ci].id, from: debt[di].name, to: cred[ci].name, a: x });
-    debt[di].a -= x; cred[ci].a -= x;
-    if (debt[di].a < 0.5) di++;
-    if (cred[ci].a < 0.5) ci++;
-  }
-  return { core, total, share, bal, transfers };
-}
-
-/* A settle-up mark belongs to one exact transfer, so the amount is part of the
-   key: add or remove an expense and the transfer it referred to no longer
-   exists, which is the honest answer — the old "paid" flag used to survive and
-   silently re-label a different, larger debt as already settled. */
-export const settleKey = (t) => `${t.fromId}>${t.toId}:${Math.round(t.a)}`;
-
-/** Toggle one transfer, dropping marks whose transfer is no longer on the list. */
-export function toggleSettled(settled, transfers, key) {
-  const live = new Set(transfers.map(settleKey));
-  const next = {};
-  Object.keys(settled).forEach((k) => { if (live.has(k)) next[k] = true; });
-  if (next[key]) delete next[key]; else next[key] = true;
-  return next;
-}

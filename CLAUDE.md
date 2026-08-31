@@ -12,8 +12,14 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm run test:rules # kiểm thử Security Rules trên emulator — 27 ca
+npm test           # logic thuần — 61 ca, vài giây, không cần gì ngoài node
+npm run test:rules # kiểm thử Security Rules trên emulator — 39 ca
 ```
+
+`npm test` chạy `node --test "tests/unit/*.test.mjs"`. **Đường dẫn phải là glob trong dấu
+nháy**, không phải tên thư mục: từ Node 22 `node --test tests/unit` coi đó là một *file*
+và báo `Cannot find module`. Glob cũng là cách giữ `firestore-rules.test.mjs` ở ngoài —
+ca đó cần emulator, còn `npm test` phải chạy được ở bất cứ đâu.
 
 `firebase emulators` đòi **JDK 21+**. Máy này **đã có** ở
 `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`, nhưng `java` trên PATH là
@@ -44,6 +50,36 @@ screens/  →  store.jsx (actions)  →  backend/index.js (repo)  →  firestore
 giao diện repository**, nên chế độ thử không phải là nhánh `if` rải khắp giao diện.
 Thêm thao tác dữ liệu mới thì phải cài ở **cả hai** file, rồi mới thêm action trong
 store, rồi mới gọi từ màn hình.
+
+### Logic thuần nằm ngoài React, có chủ ý
+
+`budget.js`, `itinerary.js`, `places.js` ở đầu `src/` không import React và không import
+backend. Lý do rất cụ thể: `store.jsx` có JSX nên `node --test` không nạp được, và
+`backend/config.js` đọc `import.meta.env` nên bất cứ thứ gì chạm vào nó cũng ngoài tầm
+với của Node trần. Muốn test một hàm mà không kéo theo cả một test runner cho trình duyệt
+thì hàm đó phải nằm ở đây.
+
+Đó cũng là lý do tìm kiếm địa điểm bị tách đôi: `src/places.js` dựng URL và đọc JSON
+(test được), `src/backend/places.js` gọi `fetch` và chọn provider (không test được).
+Thêm provider mới thì viết parser ở file đầu, kèm ca test bằng JSON mẫu.
+
+`optimizeRoute(items, distance)` nhận hàm khoảng cách làm tham số — mặc định là haversine.
+Đó là chỗ nối sẵn cho Directions API sau này; hàm truyền vào **phải đồng bộ**, nên tuyến
+đường bộ phải lấy hết trước rồi mới gọi.
+
+### Bản in là một component riêng, không phải CSS phủ lên màn hình
+
+`TripPrintSheet` render **cả chuyến** — mọi ngày một lượt. Màn hình chỉ bao giờ render
+đúng một ngày, nên nếu chỉ viết `@media print` đè lên giao diện thì bản PDF sẽ chỉ có một
+ngày mà trông vẫn như hoàn chỉnh. Nó nằm **ngoài `<main>`** trong `App.jsx` vì lúc in
+`#main` bị ẩn đi.
+
+### `order` của ngày là chỉ số, không phải dấu thời gian
+
+Từng có hai thang đo trong cùng một collection: `createTrip` ghi chỉ số mảng, `addDay` ghi
+`Date.now()`. Sắp xếp vẫn đúng chỉ vì ngày luôn được thêm vào cuối. Giờ `order` luôn là vị
+trí trong chuyến; `reorderDays` đánh số lại toàn bộ, và **xoá một ngày cũng đánh số lại**
+— nếu không, `addDay` lấy `days.length` sẽ đụng số với một ngày đang tồn tại.
 
 ### Vì sao stops nằm trong document ngày
 
@@ -111,7 +147,11 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
-| Test Security Rules | ✅ 27/27 pass trên emulator |
+| Test Security Rules | ✅ 39/39 pass trên emulator (quyền + shape dữ liệu ghi vào) |
+| Test logic thuần | ✅ 61/61 pass, `npm test`, không cần emulator |
+| CI | ✅ `.github/workflows/ci.yml` — lint + unit + build, rules ở job riêng có JDK 21 |
+| Tìm kiếm địa điểm | ✅ Nominatim mặc định (không cần khoá), Goong khi có `VITE_GOONG_API_KEY` |
+| Xuất PDF | ✅ qua hộp thoại In của trình duyệt, bản in riêng gồm cả chuyến |
 | Nhận lời mời | ✅ tự nhận ghế khi đăng nhập (cần email đã xác minh) |
 | Gỡ / rời thành viên | ✅ chủ gỡ được người khác và huỷ được lời mời; người khác tự rời được |
 | Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days` và `expenses` |
@@ -213,14 +253,27 @@ chủ chuyến thêm lại được. Bịt hẳn thì phải đưa danh tính gh
 
 ### Khác
 
-- Kéo-thả dùng HTML5 drag & drop nên chưa chạy trên cảm ứng, chưa có cách sắp xếp bằng bàn phím.
+- Kéo-thả vẫn dùng HTML5 drag & drop nên vẫn chỉ chạy bằng chuột. **Nút ↑ ↓ cạnh mỗi
+  điểm dừng là đường đi cho cảm ứng và bàn phím** — cùng một hàm `moveItem`, nên ba lối
+  vào không thể bất đồng ý về "chuyển xuống" nghĩa là gì. Đừng gỡ nút đi mà chỉ sửa DnD.
 - Trong Browser pane lúc kiểm thử, `net::ERR_CONNECTION_REFUSED` là do môi trường chặn
   host ngoài (ảnh picsum, tile OpenStreetMap, Google Fonts) — không phải lỗi app.
 - `npm run lint` còn **5** cảnh báo `react-hooks/set-state-in-effect` có sẵn từ trước
   (animation vào màn, toast, count-up). Đã để mức `warn` có chủ ý, không phải bỏ sót.
-- `npm run build` còn cảnh báo chunk >500 kB, trên `firebase-firestore` (567 kB). Split
-  thêm không giải quyết được; chỉ có cách không ship nó, mà `backend/index.js` import
-  tĩnh cả hai repository để chọn một. Xem chú thích trong `vite.config.js`.
+- `npm run build` **sạch**. `chunkSizeWarningLimit` đã nâng lên 600 kèm lý do trong
+  `vite.config.js`: chunk to nhất là `firebase-firestore` 567 kB, là vendor, nằm chunk
+  riêng, chỉ đổi khi đổi SDK. Ngưỡng đặt sát ngay trên con số thật để nếu có gì mới làm
+  nó phình ra thì cảnh báo lại kêu.
+
+  Muốn bỏ hẳn 567 kB đó ở chế độ thử thì **lazy repository thôi là chưa đủ** —
+  `backend/firebase.js` import tĩnh `getFirestore` để `db()` giữ được tính đồng bộ cho
+  mọi call site trong `backend/firestore.js`. Phải chuyển import đó vào chính
+  `backend/firestore.js` rồi mới `import()` động repository được. Chưa làm vì đường
+  Firebase thật không kiểm chứng được từ đây, mà đó đúng là chỗ hay khác đường mock.
+
+- Leaflet nạp bằng `lazy()` trong `ItineraryTab`, fallback là đúng cái hộp cùng chiều cao
+  nên không giật layout. Người dùng vào màn danh sách trước, nên 150 kB đó không nằm trên
+  đường tải đầu nữa.
 
 ---
 
@@ -307,6 +360,18 @@ Hosting đã rewrite mọi path về `index.html` (`firebase.json`), nên vào t
 lần khởi động bình thường với pathname khác.
 
 ## Những chỗ đã sập — đừng dẫm lại
+
+**`Number(null)` là `0`, và `0` là một toạ độ hợp lệ.** `cleanStop` từng viết
+`coord = (v) => Number.isFinite(Number(v)) ? Number(v) : null`. `newStop()` sinh ra
+`lat: null, lng: null`, ghi thẳng vào Firestore, đọc lại thành **`lat: 0, lng: 0`** —
+`hasCoords()` trả `true`, và **mọi điểm dừng thêm tay bị ghim ngoài khơi châu Phi** rồi
+kéo cả `optimizeRoute` theo, trong khi giao diện vẫn nói "chưa có toạ độ". Chỉ lộ ra sau
+một lần tải lại trang, vì trong bộ nhớ giá trị vẫn là `null`.
+
+Bài học rộng hơn: `num()` dùng chung được vì fallback của nó *là* 0, còn toạ độ thì
+"thiếu" và "bằng 0" là hai câu trả lời khác nhau — trường nào như vậy phải có bộ đọc
+riêng. Giờ `coord()` chỉ nhận `number` hoặc chuỗi chứa số, kèm kiểm tra biên ±90/±180.
+Có ca test trong `tests/unit/schema.test.mjs` ghim đúng cảnh này.
 
 **`firebase/ai` phải nằm trong `optimizeDeps.include`.** Nó chỉ được `import()` động nên
 Vite không thấy khi quét import tĩnh lúc khởi động; nó sẽ phát hiện muộn lúc chạy, tái

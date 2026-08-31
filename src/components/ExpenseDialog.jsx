@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useApp, useActiveTrip, computeBudget } from '../store.jsx';
+import { useApp, useActiveTrip } from '../store.jsx';
+import { computeBudget } from '../budget.js';
 import { CATEGORIES, first, fmt, uid } from '../data.js';
 import { Seg } from './ui.jsx';
 

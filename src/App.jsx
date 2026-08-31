@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useApp } from './store.jsx';
+import { useActiveTrip, useApp } from './store.jsx';
 import { signOutUser } from './backend/index.js';
 import { Avatar, Pin } from './components/ui.jsx';
 import Login from './screens/Login.jsx';
@@ -8,6 +8,7 @@ import Trip from './screens/Trip.jsx';
 import AIDesk from './screens/AIDesk.jsx';
 import Profile from './screens/Profile.jsx';
 import ExpenseDialog from './components/ExpenseDialog.jsx';
+import TripPrintSheet from './components/TripPrintSheet.jsx';
 import Toast from './components/Toast.jsx';
 
 const NAV = [
@@ -55,6 +56,7 @@ function TopBar() {
 
 export default function App() {
   const { state } = useApp();
+  const printable = useActiveTrip();
   const inApp = state.screen !== 'login' && !!state.user;
 
   /* Entry animations are decoration; this guarantees the view ends up visible
@@ -104,6 +106,9 @@ export default function App() {
         )}
       </main>
       {state.showAdd && <ExpenseDialog />}
+      {/* Outside <main> on purpose: printing hides #main and shows this
+          instead, so it cannot live inside the screen it replaces. */}
+      {state.screen === 'trip' && <TripPrintSheet trip={printable} />}
       <Toast />
     </div>
   );

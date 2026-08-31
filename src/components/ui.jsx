@@ -13,6 +13,19 @@ export const ArrowRight = (p) => (
 export const ChevronLeft = (p) => (
   <svg {...ico} {...p}><path d="m14 18-6-6 6-6" /></svg>
 );
+export const ChevronUp = (p) => (
+  <svg {...ico} {...p}><path d="m6 15 6-6 6 6" /></svg>
+);
+export const ChevronDown = (p) => (
+  <svg {...ico} {...p}><path d="m6 9 6 6 6-6" /></svg>
+);
+export const Printer = (p) => (
+  <svg {...ico} {...p}>
+    <path d="M7 9V3.8h10V9" />
+    <path d="M6.5 18H5a2 2 0 0 1-2-2v-4.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-1.5" />
+    <path d="M7 14.5h10v5.7H7z" />
+  </svg>
+);
 export const Plus = (p) => (
   <svg {...ico} {...p}><path d="M5 12h14" /><path d="M12 5v14" /></svg>
 );
@@ -61,6 +74,15 @@ export const Search = (p) => (
 );
 
 export const muted = (pct = 55) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
+
+/* An English subtitle beside a Vietnamese label. The `lang` is the reason this
+   is a component rather than a class: the page is lang="vi", so without it a
+   screen reader reads "Split balances" with Vietnamese pronunciation rules —
+   WCAG 3.1.2, and the one part of this feature that CSS cannot express.
+   Showing and hiding stays in CSS, off [data-en] on the app root. */
+export const En = ({ children, className = '', style }) => (
+  <span className={`st-en ${className}`.trim()} lang="en" style={style}>{children}</span>
+);
 
 /* Ease a number from 0 up to `target` over `dur` ms (respects reduced motion).
    Same safety net as the entry animations: requestAnimationFrame is suspended

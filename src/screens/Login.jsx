@@ -5,7 +5,7 @@ import {
   authMessage, firebaseEnabled, missingKeys,
   signInWithEmail, signInWithGoogle, signUpWithEmail,
 } from '../backend/index.js';
-import { ArrowRight, Pin, Photo } from '../components/ui.jsx';
+import { ArrowRight, En, Pin, Photo } from '../components/ui.jsx';
 
 export default function Login() {
   const { state, patch } = useApp();
@@ -57,7 +57,7 @@ export default function Login() {
           <h1 className="st-login-title">Lên kế hoạch cùng nhau, đi cùng nhau.</h1>
           <p className="st-lede" style={{ fontSize: 15, marginBottom: 22 }}>
             {greeting}. Soạn lịch trình, chia tiền và giữ cả nhóm trên cùng một trang.
-            <span className="st-en text-muted"> · Plan together, travel together.</span>
+            <En className="text-muted"> · Plan together, travel together.</En>
           </p>
 
           {/* Without a project every button on this screen is a stand-in, and
@@ -80,7 +80,7 @@ export default function Login() {
             <div style={{ display: 'grid', gap: 15 }}>
               {isSignup && (
                 <div className="field">
-                  <label htmlFor="st-name">Họ tên<span className="st-en"> · Full name</span></label>
+                  <label htmlFor="st-name">Họ tên<En> · Full name</En></label>
                   <input className="input" id="st-name" placeholder="Trần Hoài Minh" autoComplete="name"
                     value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
@@ -98,7 +98,7 @@ export default function Login() {
                 )}
               </div>
               <div className="field">
-                <label htmlFor="st-pass">Mật khẩu<span className="st-en"> · Password</span></label>
+                <label htmlFor="st-pass">Mật khẩu<En> · Password</En></label>
                 <input className="input" id="st-pass" type="password" placeholder="••••••••"
                   autoComplete={isSignup ? 'new-password' : 'current-password'}
                   value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -115,10 +115,10 @@ export default function Login() {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
             <button type="button" className="btn btn-ghost" style={{ fontSize: 13 }}>Quên mật khẩu?</button>
-            <span className="st-en text-muted" style={{ fontSize: 12 }}>Forgot password</span>
+            <En className="text-muted" style={{ fontSize: 12 }}>Forgot password</En>
           </div>
 
-          <p className="st-rule">hoặc<span className="st-en">&nbsp;· or</span></p>
+          <p className="st-rule">hoặc<En>&nbsp;· or</En></p>
           <button type="button" className="btn btn-secondary btn-block" disabled={busy}
             onClick={() => attempt(signInWithGoogle)}>
             {firebaseEnabled ? 'Tiếp tục với Google' : 'Tiếp tục với Google (mô phỏng)'}

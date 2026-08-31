@@ -25,6 +25,11 @@ export const appCheckUseEnterprise = env.VITE_FIREBASE_APPCHECK_ENTERPRISE === '
 /** The Gemini model used by the AI desk. Override per project if needed. */
 export const AI_MODEL = env.VITE_GEMINI_MODEL || 'gemini-3.5-flash';
 
+/* Place search. Empty is a supported configuration, not a missing one: without
+   a key the app falls back to Nominatim (OpenStreetMap), which needs no
+   account. Goong is better on Vietnamese addresses, so it wins when present. */
+export const goongApiKey = env.VITE_GOONG_API_KEY || '';
+
 const REQUIRED = ['apiKey', 'authDomain', 'projectId', 'appId'];
 
 /** True only when a real project is wired up; drives the demo-mode fallback. */

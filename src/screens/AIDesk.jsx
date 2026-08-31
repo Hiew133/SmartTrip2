@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store.jsx';
 import { fmt, parseISO } from '../data.js';
 import { aiAvailable, generateItinerary } from '../backend/index.js';
-import { ArrowRight, Compass, Seg } from '../components/ui.jsx';
+import { ArrowRight, Compass, En, Seg } from '../components/ui.jsx';
 
 const STYLE_CHIPS = ['Ẩm thực', 'Biển đảo', 'Văn hoá', 'Nghỉ dưỡng', 'Chụp ảnh', 'Khám phá đêm'];
 const PARTY_SIZE = { 'Một mình': 1, 'Cặp đôi': 2, 'Nhóm bạn': 4, 'Gia đình': 4 };
@@ -103,7 +103,7 @@ export default function AIDesk() {
   return (
     <div className="st-page st-page-narrow">
       <header className="st-rise">
-        <span className="st-eyebrow">Bàn soạn lịch trình<span className="st-en">&nbsp;· AI trip desk</span></span>
+        <span className="st-eyebrow">Bàn soạn lịch trình<En>&nbsp;· AI trip desk</En></span>
         <h1 className="st-display">Soạn lịch trình bằng AI</h1>
         <p className="st-lede" style={{ margin: '14px 0 0' }}>
           Cho SmartTrip biết bạn muốn đi đâu và đi kiểu gì. Bản nháp trả về theo từng ngày,
@@ -119,7 +119,7 @@ export default function AIDesk() {
       {state.aiPhase === 'form' && (
         <div className="st-aigrid st-rise">
           <div className="field st-full">
-            <label htmlFor="ai-dest">Điểm đến<span className="st-en"> · Destination</span></label>
+            <label htmlFor="ai-dest">Điểm đến<En> · Destination</En></label>
             <input className="input" id="ai-dest" value={state.aiDest}
               onChange={(e) => patch({ aiDest: e.target.value })} />
           </div>
@@ -153,7 +153,7 @@ export default function AIDesk() {
             }))} />
           </div>
           <div className="field st-full">
-            <label>Phong cách chuyến đi<span className="st-en"> · Travel style</span></label>
+            <label>Phong cách chuyến đi<En> · Travel style</En></label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {STYLE_CHIPS.map((c) => {
                 const on = !!state.aiStyles[c];
