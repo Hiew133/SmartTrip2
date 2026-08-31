@@ -10,8 +10,28 @@ export const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 export const arr = (v) => (Array.isArray(v) ? v : []);
 export const str = (v, fb = '') => (typeof v === 'string' ? v : fb);
 export const num = (v, fb = 0) => (Number.isFinite(Number(v)) ? Number(v) : fb);
-const coord = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+
+/* Coordinates are the one field where "missing" and "zero" are different
+   answers, so this cannot go through num().
+
+   It used to: `Number.isFinite(Number(v)) ? Number(v) : null`. But Number(null)
+   is 0 and 0 is finite, so every stop added by hand — newStop() writes
+   lat: null, lng: null — came back from the backend at latitude 0, longitude 0.
+   hasCoords() then said yes, and the stop was pinned in the Gulf of Guinea and
+   fed into the route optimiser, while the editor still told the person their
+   stop had no coordinates. Only a real number, or a string holding one, counts;
+   the range check keeps a nonsense value from throwing inside Leaflet. */
+const inRange = (n, limit) => (Number.isFinite(n) && Math.abs(n) <= limit ? n : null);
+
+const coord = (v, limit) => {
+  if (typeof v === 'number') return inRange(v, limit);
+  if (typeof v === 'string' && v.trim() !== '') return inRange(Number(v), limit);
+  return null;
+};
+
+const lat = (v) => coord(v, 90);
+const lng = (v) => coord(v, 180);
 
 export function cleanStop(raw) {
   if (!isObj(raw)) return null;
@@ -21,8 +41,8 @@ export function cleanStop(raw) {
     name: str(raw.name, 'Điểm dừng'),
     note: str(raw.note, ''),
     cost: Math.max(0, num(raw.cost, 0)),
-    lat: coord(raw.lat),
-    lng: coord(raw.lng),
+    lat: lat(raw.lat),
+    lng: lng(raw.lng),
   };
 }
 
