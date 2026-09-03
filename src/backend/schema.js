@@ -113,3 +113,87 @@ export function cleanTrip(raw) {
 }
 
 export const cleanTrips = (list) => arr(list).map(cleanTrip).filter(Boolean);
+
+/* ── guidebook and translations ─────────────────────────────────────────────
+
+   Both are written by a language model and read back from Firestore or from
+   this device's own cache, so they are exactly as untrusted as a trip is.
+
+   The clipping is not cosmetic. Security Rules cannot walk a list, so they can
+   only cap how many rows a guidebook has — the length of each row is nobody's
+   job but this file's. Without it, one document could carry a megabyte of text
+   into every member's browser and still be perfectly well-formed to the rules. */
+
+const clip = (v, max, fb = '') => {
+  const s = str(v, fb).trim();
+  return s.length > max ? s.slice(0, max) : s;
+};
+
+const GUIDE = {
+  sections: 20, tips: 12, phrases: 60, emergency: 20,
+  title: 120, tip: 400, phrase: 200, label: 120, value: 120,
+};
+
+function cleanSection(raw) {
+  if (!isObj(raw)) return null;
+  const title = clip(raw.title, GUIDE.title);
+  const tips = arr(raw.tips).map((t) => clip(t, GUIDE.tip)).filter(Boolean).slice(0, GUIDE.tips);
+  if (!title && !tips.length) return null;
+  return { title: title || 'Ghi chú', tips };
+}
+
+/* A phrase is only useful if it has both sides of it: the Vietnamese the
+   person means and the local text they can point at. `roman` is the reading
+   aid and may legitimately be missing for a language written in Latin script. */
+function cleanPhraseRow(raw) {
+  if (!isObj(raw)) return null;
+  const vi = clip(raw.vi, GUIDE.phrase);
+  const local = clip(raw.local, GUIDE.phrase);
+  if (!vi || !local) return null;
+  return { vi, local, roman: clip(raw.roman, GUIDE.phrase) };
+}
+
+function cleanContact(raw) {
+  if (!isObj(raw)) return null;
+  const label = clip(raw.label, GUIDE.label);
+  const value = clip(raw.value, GUIDE.value);
+  if (!label || !value) return null;
+  return { label, value };
+}
+
+/** One destination's guidebook. Null when there is nothing worth showing. */
+export function cleanGuide(raw) {
+  if (!isObj(raw)) return null;
+  const sections = arr(raw.sections).map(cleanSection).filter(Boolean).slice(0, GUIDE.sections);
+  const phrases = arr(raw.phrases).map(cleanPhraseRow).filter(Boolean).slice(0, GUIDE.phrases);
+  const emergency = arr(raw.emergency).map(cleanContact).filter(Boolean).slice(0, GUIDE.emergency);
+  // an empty guidebook is worse than none: it looks generated and says nothing
+  if (!sections.length && !phrases.length) return null;
+  return {
+    dest: clip(raw.dest, 200),
+    lang: clip(raw.lang, 100),
+    currency: clip(raw.currency, 200),
+    summary: clip(raw.summary, 2000),
+    sections,
+    phrases,
+    emergency,
+    createdAt: num(raw.createdAt, 0),
+  };
+}
+
+/** One translated line, from the model or from this device's cache. */
+export function cleanTranslation(raw) {
+  if (!isObj(raw)) return null;
+  const source = clip(raw.source, GUIDE.phrase);
+  const text = clip(raw.text, GUIDE.phrase);
+  if (!source || !text) return null;
+  return {
+    source,
+    text,
+    roman: clip(raw.roman, GUIDE.phrase),
+    literal: clip(raw.literal, GUIDE.phrase),
+    note: clip(raw.note, GUIDE.tip),
+    target: clip(raw.target, 100),
+    createdAt: num(raw.createdAt, 0),
+  };
+}

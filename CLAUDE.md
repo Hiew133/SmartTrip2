@@ -12,8 +12,8 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm test           # logic thuần — 61 ca, vài giây, không cần gì ngoài node
-npm run test:rules # kiểm thử Security Rules trên emulator — 39 ca
+npm test           # logic thuần — 86 ca, vài giây, không cần gì ngoài node
+npm run test:rules # kiểm thử Security Rules trên emulator — 44 ca
 ```
 
 `npm test` chạy `node --test "tests/unit/*.test.mjs"`. **Đường dẫn phải là glob trong dấu
@@ -53,7 +53,7 @@ store, rồi mới gọi từ màn hình.
 
 ### Logic thuần nằm ngoài React, có chủ ý
 
-`budget.js`, `itinerary.js`, `places.js` ở đầu `src/` không import React và không import
+`budget.js`, `itinerary.js`, `places.js`, `guide.js`, `phrasebook.js` ở đầu `src/` không import React và không import
 backend. Lý do rất cụ thể: `store.jsx` có JSX nên `node --test` không nạp được, và
 `backend/config.js` đọc `import.meta.env` nên bất cứ thứ gì chạm vào nó cũng ngoài tầm
 với của Node trần. Muốn test một hàm mà không kéo theo cả một test runner cho trình duyệt
@@ -147,15 +147,17 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
-| Test Security Rules | ✅ 39/39 pass trên emulator (quyền + shape dữ liệu ghi vào) |
-| Test logic thuần | ✅ 61/61 pass, `npm test`, không cần emulator |
+| Test Security Rules | ✅ 44/44 pass trên emulator (quyền + shape dữ liệu ghi vào) |
+| Test logic thuần | ✅ 86/86 pass, `npm test`, không cần emulator |
 | CI | ✅ `.github/workflows/ci.yml` — lint + unit + build, rules ở job riêng có JDK 21 |
 | Tìm kiếm địa điểm | ✅ Nominatim mặc định (không cần khoá), Goong khi có `VITE_GOONG_API_KEY` |
 | Xuất PDF | ✅ qua hộp thoại In của trình duyệt, bản in riêng gồm cả chuyến |
 | Nhận lời mời | ✅ tự nhận ghế khi đăng nhập (cần email đã xác minh) |
 | Gỡ / rời thành viên | ✅ chủ gỡ được người khác và huỷ được lời mời; người khác tự rời được |
-| Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days` và `expenses` |
+| Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days`, `expenses` và `guide` |
 | Liên kết chia sẻ `/t/{id}` | ✅ mở đúng chuyến, giữ được qua bước đăng nhập |
+| Cẩm nang bản địa | ✅ tab thứ tư trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
+| Sổ tay dịch | ✅ màn `Dịch` trên nav, cache trong máy nên mở lại không tốn lượt gọi AI |
 
 > **`.env.local` không có trong git.** Máy nào chưa có thì app chạy **chế độ thử**:
 > dữ liệu trong localStorage, Trợ lý AI trả bản nháp mẫu. Đó là hành vi đúng, không
@@ -358,6 +360,77 @@ người chưa được mời thì đó là chuyện bình thường, không ph�
 
 Hosting đã rewrite mọi path về `index.html` (`firebase.json`), nên vào thẳng link là một
 lần khởi động bình thường với pathname khác.
+
+## Cẩm nang bản địa và sổ tay dịch
+
+Hai tính năng, một hạ tầng. Cả hai đều là: hỏi Gemini → làm sạch bằng `schema.js` →
+lưu lại để không hỏi lại. Chỗ khác nhau duy nhất là **lưu ở đâu**, và đó là một
+quyết định có lý do.
+
+### Cẩm nang nằm trong chuyến đi, không nằm ở collection dùng chung
+
+`trips/{tripId}/guide/{slug}` — một document mỗi điểm đến, `slug` sinh bởi `slugFor()`
+trong `src/guide.js` (bỏ dấu, ASCII, chữ thường). "Hội An" và "Hoi An" cố tình ra cùng
+một slug: người gõ không dấu vẫn đang nói về nơi đó, và hai cẩm nang cho một phố cổ là
+lỗi chứ không phải tính năng.
+
+Đã cân nhắc một collection `guides/{thành-phố}` dùng chung cho mọi chuyến đi rồi bỏ:
+client ghi vào đó nghĩa là **bất kỳ ai cũng đầu độc được cache của người khác**, mà rules
+không đọc được nội dung để phân biệt tốt xấu. Hai chuyến cùng đi Hội An phải soạn hai lần
+là cái giá rẻ hơn nhiều.
+
+### Cẩm nang đọc theo yêu cầu, không gắn listener
+
+`subscribeTrips` đã mở **hai** listener cho mỗi chuyến và có sẵn cảnh báo khi vượt ngưỡng.
+Thêm cái thứ ba cho nội dung chỉ một tab nhìn tới sẽ hạ trần quy mô đó xuống một phần ba
+mà chẳng đổi lại được gì — cẩm nang không tự đổi trong lúc đang đọc. Nên nó đi bằng
+`getDoc` khi mở tab, và **không nằm trong `state.trips`**: `GuideTab` giữ nó.
+
+Trong `GuideTab`, "đang tải" **suy ra từ việc slug lệch nhau** (`loaded.slug !== slug`)
+chứ không phải một cờ riêng. Hai lý do: cờ thứ hai thì có ngày nó bất đồng với dữ liệu,
+và cách này khiến câu trả lời cho một điểm đến người dùng đã bỏ qua không bao giờ hiện
+dưới tên điểm đến mới.
+
+### `backend/offline.js` — bản lưu của riêng máy này
+
+Giống `backend/places.js`, nó **không phải repository và không có bản demo song sinh**:
+nó không giữ gì thuộc về chuyến đi và không ai khác đọc được. Nó tồn tại vì cả hai tính
+năng đều được dùng đúng lúc mạng tệ nhất — đứng giữa chợ nước ngoài, tắt roaming, cần
+biết cái biển kia viết gì.
+
+- Mọi cẩm nang **đọc được đều ghi kèm vào máy**, và `loadGuide` **rơi về bản đó khi
+  round-trip lỗi**. Firestore không bật offline persistence, nên nếu không có bước này
+  thì cẩm nang chỉ mở được khi có mạng.
+- Sổ tay dịch **chỉ sống ở đây** — nó là tiện ích cá nhân, không phải nội dung chuyến đi,
+  nên không cần Firestore, không cần rules, và chạy y hệt nhau ở hai chế độ.
+- Đọc ra vẫn đi qua `cleanGuide` / `cleanTranslation`. Giá trị trong localStorage
+  không đáng tin hơn một document Firestore: bản build này không chắc đã ghi nó.
+
+### Khoá cache của bản dịch là cả tính năng
+
+`phraseKey(source, target)` trong `src/phrasebook.js`: bỏ khoảng trắng thừa, không phân
+biệt hoa thường, **nhưng phân biệt ngôn ngữ đích**. Lỏng quá thì hai câu khác nhau dùng
+chung một câu trả lời; chặt quá thì cùng một câu tốn một lượt gọi model mỗi lần hỏi. Cả
+hai đều hỏng im lặng, nên cả hai đều có ca test.
+
+### Rules: `guide` là con thứ ba, và nó phải chết trước cha
+
+`guideWellFormed()` chặn kiểu và **số dòng** (20 mục, 60 câu, 20 đầu mối khẩn cấp).
+Rules không duyệt được mảng nên **độ dài từng dòng là việc của `schema.js`** — nếu thiếu
+phần cắt trong đó thì một document đúng chuẩn với rules vẫn có thể mang cả megabyte chữ
+vào trình duyệt của mọi thành viên.
+
+`deleteTrip` giờ lấy cả `guide` vào danh sách con phải xoá trước. Đây đúng là cái bẫy đã
+ghi ở mục "Những chỗ đã sập": rule của con `get()` lên trip cha để tra quyền, cha mất
+trước là con thành mồ côi vĩnh viễn.
+
+### `askModel()` gom một chỗ
+
+Ba tính năng cùng gọi Gemini và cùng hỏng theo đúng hai kiểu (chưa enforce App Check,
+chưa bật AI Logic), nên phần nạp SDK, dựng model, dịch lỗi sang tiếng Việt nằm trong một
+hàm. Mỗi bên gọi mang schema, prompt và `temperature` của mình — cẩm nang 0.6, bản dịch
+0.3, lịch trình vẫn 0.9. Vẫn nguyên luật cũ: **mọi object lồng trong schema phải viết
+`Schema.object({ properties: { … } })`**.
 
 ## Những chỗ đã sập — đừng dẫm lại
 

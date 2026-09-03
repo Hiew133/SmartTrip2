@@ -6,6 +6,7 @@ import Login from './screens/Login.jsx';
 import Trips from './screens/Trips.jsx';
 import Trip from './screens/Trip.jsx';
 import AIDesk from './screens/AIDesk.jsx';
+import Translate from './screens/Translate.jsx';
 import Profile from './screens/Profile.jsx';
 import ExpenseDialog from './components/ExpenseDialog.jsx';
 import TripPrintSheet from './components/TripPrintSheet.jsx';
@@ -14,6 +15,7 @@ import Toast from './components/Toast.jsx';
 const NAV = [
   ['Chuyến đi', 'trips', (s) => s === 'trips' || s === 'trip'],
   ['Trợ lý AI', 'ai', (s) => s === 'ai'],
+  ['Dịch', 'translate', (s) => s === 'translate'],
 ];
 
 function TopBar() {
@@ -101,6 +103,7 @@ export default function App() {
             {state.screen === 'trips' && <Trips />}
             {state.screen === 'trip' && <Trip />}
             {state.screen === 'ai' && <AIDesk />}
+            {state.screen === 'translate' && <Translate />}
             {state.screen === 'profile' && <Profile />}
           </>
         )}

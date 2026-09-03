@@ -74,6 +74,19 @@ const left = (who, over = {}) => {
 const tripRef = (fs, id = 'trip1') => doc(fs, 'trips', id);
 const expenseRef = (fs, id = 'e1') => doc(fs, 'trips', 'trip1', 'expenses', id);
 const dayRef = (fs, id = 'd1') => doc(fs, 'trips', 'trip1', 'days', id);
+const guideRef = (fs, id = 'bangkok') => doc(fs, 'trips', 'trip1', 'guide', id);
+
+const guideData = (over = {}) => ({
+  dest: 'Bangkok, Thái Lan',
+  lang: 'Tiếng Thái',
+  currency: 'Baht (THB)',
+  summary: 'Vài điều nên biết trước khi tới.',
+  sections: [{ title: 'Đi lại', tips: ['BTS chạy tới 24h'] }],
+  phrases: [{ vi: 'Cảm ơn', local: 'ขอบคุณ', roman: 'khop khun' }],
+  emergency: [{ label: 'Cảnh sát du lịch', value: '1155' }],
+  createdAt: 1,
+  ...over,
+});
 
 describe('firestore.rules', () => {
   before(async () => {
@@ -92,6 +105,7 @@ describe('firestore.rules', () => {
       await setDoc(tripRef(fs), tripData());
       await setDoc(dayRef(fs), { place: 'Đà Nẵng', items: [], order: 0 });
       await setDoc(expenseRef(fs), { name: 'Vé máy bay', cat: 'Đi lại', payerId: 'm1', amount: 4800000, createdAt: 1 });
+      await setDoc(guideRef(fs), guideData());
     });
   };
 
@@ -388,6 +402,54 @@ describe('firestore.rules', () => {
     await assertSucceeds(deleteDoc(dayRef(as(EDITOR))));
     await assertSucceeds(deleteDoc(expenseRef(as(EDITOR))));
   });
+  /* The guidebook is a third child collection, so it gets the same three
+     questions the other two got: who reads it, who writes it, and what shape
+     is allowed through. Writing only the happy path here would repeat the
+     mistake that left `members` open — a rule protects exactly the fields its
+     tests name. */
+  it('the guidebook follows the trip role', async () => {
+    await seed();
+    await assertSucceeds(getDoc(guideRef(as(VIEWER))));
+    await assertSucceeds(setDoc(guideRef(as(EDITOR)), guideData({ summary: 'Đã soạn lại.' })));
+    await assertFails(setDoc(guideRef(as(VIEWER)), guideData()));
+    await assertFails(getDoc(guideRef(as(STRANGER))));
+    await assertFails(setDoc(guideRef(as(STRANGER)), guideData()));
+  });
+
+  it('an invited person cannot read the guidebook before claiming their seat', async () => {
+    // reading the trip to find their invitation is not reading its contents
+    await seed();
+    await assertFails(getDoc(guideRef(asEmail(INVITEE, INVITEE_EMAIL))));
+  });
+
+  it('a guidebook section list has to be a list', async () => {
+    await seed();
+    const fs = as(EDITOR);
+    await assertFails(setDoc(guideRef(fs), guideData({ sections: 'một đoạn văn' })));
+    await assertFails(setDoc(guideRef(fs), guideData({ phrases: { a: 1 } })));
+    await assertFails(setDoc(guideRef(fs), guideData({ emergency: '113' })));
+    await assertFails(setDoc(guideRef(fs), guideData({ createdAt: 'hôm qua' })));
+  });
+
+  it('a guidebook cannot be used as free storage', async () => {
+    await seed();
+    const fs = as(EDITOR);
+    await assertFails(setDoc(guideRef(fs), guideData({ summary: 'x'.repeat(2001) })));
+    await assertFails(setDoc(guideRef(fs), guideData({ dest: 'x'.repeat(201) })));
+    await assertFails(setDoc(guideRef(fs), guideData({
+      phrases: Array.from({ length: 61 }, (_, i) => ({ vi: `câu ${i}`, local: '…', roman: '…' })),
+    })));
+    await assertFails(setDoc(guideRef(fs), guideData({
+      sections: Array.from({ length: 21 }, (_, i) => ({ title: `mục ${i}`, tips: [] })),
+    })));
+  });
+
+  it('an editor can throw a guidebook away and write a new one', async () => {
+    await seed();
+    await assertSucceeds(deleteDoc(guideRef(as(EDITOR))));
+    await assertFails(deleteDoc(guideRef(as(VIEWER))));
+  });
+
   it('nothing outside /trips is reachable', async () => {
     await assertFails(getDoc(doc(as(OWNER), 'secrets', 'x')));
     await assertFails(setDoc(doc(as(OWNER), 'secrets', 'x'), { a: 1 }));

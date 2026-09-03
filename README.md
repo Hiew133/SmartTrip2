@@ -20,7 +20,8 @@ npm run test:rules # test Security Rules trên emulator (cần JDK 21+)
 |---|---|
 | Đăng nhập / Đăng ký | Firebase Auth: Google + Email/Password (chế độ thử khi chưa nối Firebase) |
 | Chuyến đi của tôi | Danh sách chuyến đi dạng card, tìm kiếm & lọc theo trạng thái, tạo chuyến trống |
-| Chi tiết chuyến đi | 3 tab: **Lịch trình & bản đồ**, **Ngân sách & chia tiền**, **Thành viên** |
+| Chi tiết chuyến đi | 4 tab: **Lịch trình & bản đồ**, **Ngân sách & chia tiền**, **Thành viên**, **Cẩm nang bản địa** |
+| Dịch | Sổ tay dịch: gõ câu tiếng Việt, đưa màn hình cho người bản địa đọc |
 | Trợ lý AI | Form soạn lịch trình → loading → bản nháp đúng số ngày đã chọn |
 
 ## Ngôn ngữ thiết kế
@@ -64,6 +65,16 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
   "Chờ phản hồi"), chia sẻ liên kết + sao chép (báo lỗi thật khi trình duyệt chặn clipboard).
   Gỡ một người còn khoản chi thì SmartTrip hỏi chuyển khoản đó cho ai, thay vì tự đẩy sang
   người đầu danh sách.
+- **Cẩm nang bản địa** — tab thứ tư trong chuyến đi. Chọn một nơi (gợi ý sẵn từ tên chuyến
+  và danh sách ngày, hoặc gõ nơi khác) rồi soạn một lần: tiền bạc, đi lại, ăn uống, phong
+  tục, an toàn, kèm 10–14 câu giao tiếp có chữ bản địa và cách đọc, và các số khẩn cấp.
+  Một document cho mỗi điểm đến, cả nhóm cùng đọc, và **bản sao nằm lại trong máy** nên
+  mở được cả khi mất mạng.
+- **Sổ tay dịch** (nút `Dịch` trên nav) — gõ câu tiếng Việt, chọn ngôn ngữ, rồi đưa màn
+  hình cho người đối diện đọc: bản dịch được in to nhất trên trang, kèm cách đọc theo âm
+  tiếng Việt và **nghĩa đen dịch ngược** để bạn tự kiểm tra được câu mình sắp nói. Câu nào
+  đã dịch một lần thì nằm lại trong trình duyệt — mở lại không tốn thêm lượt gọi AI, và
+  vẫn tra được khi không có mạng.
 - **Phụ đề tiếng Anh** bật/tắt (nút `EN` trên nav) — hỗ trợ khách quốc tế. Đây là phụ đề
   cạnh nhãn tiếng Việt, không phải dịch toàn bộ giao diện; mỗi phụ đề mang `lang="en"` nên
   trình đọc màn hình phát âm đúng tiếng Anh.
@@ -126,7 +137,7 @@ Có sẵn bộ test chạy trên emulator:
 npm run test:rules
 ```
 
-39 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền hay
+44 ca, chạy trên emulator (cần JDK 21+): ai đọc được gì, editor có tự nâng quyền hay
 sửa được danh sách thành viên không, toàn bộ luồng nhận lời mời, luồng tự rời chuyến —
 kể cả các trường hợp cố tình lách — và **shape của dữ liệu ghi vào**: tiêu đề quá dài,
 `plan` âm, `settled` là mảng thay vì map, một ngày nhồi hàng trăm điểm dừng, số tiền là
@@ -231,8 +242,16 @@ trips/{tripId}/days/{dayId}
   place, seed, order, items[] { id, time, name, note, cost, lat, lng }   // lat/lng có thể null
 trips/{tripId}/expenses/{expenseId}
   name, cat, payerId, amount, createdAt
+trips/{tripId}/guide/{slug}                      // slug: "hoi-an", sinh từ tên điểm đến
+  dest, lang, currency, summary, createdAt
+  sections[] { title, tips[] }   phrases[] { vi, local, roman }   emergency[] { label, value }
 
 settled { "<fromId>><toId>:<số tiền>": true }   // khoá kèm số tiền: khoản chi đổi ⇒ dấu "đã trả" hết hiệu lực
+
+localStorage                                     // của riêng từng máy, không đồng bộ cho ai
+  smarttrip-v2         chuyến đi ở chế độ thử
+  smarttrip-guides-v1  bản lưu cẩm nang, để đọc được khi mất mạng
+  smarttrip-phrases-v1 sổ tay các câu đã dịch
 ```
 
 Điểm dừng nằm **trong** document ngày chứ không phải subcollection riêng: mọi thao tác sửa
@@ -253,6 +272,8 @@ src/
   budget.js            # tính tiền: số dư, tất toán gọn nhất, khoá "đã trả"
   itinerary.js         # haversine, tối ưu tuyến, thứ tự theo giờ, di chuyển một dòng
   places.js            # dựng URL và đọc kết quả của dịch vụ tìm địa điểm
+  guide.js             # slug điểm đến + đoán nơi nào đáng có cẩm nang
+  phrasebook.js        # khoá cache và sổ tay các câu đã dịch
   App.jsx              # nav + điều hướng màn hình
   backend/
     config.js          # đọc biến môi trường, cờ firebaseEnabled
@@ -262,11 +283,13 @@ src/
     firestore.js       # repository chạy trên Firestore
     local.js           # repository chạy trên localStorage (chế độ thử)
     places.js          # gọi mạng cho tìm địa điểm (Nominatim hoặc Goong)
+    offline.js         # bản lưu của riêng máy: cẩm nang và sổ tay dịch
     ai.js              # sinh lịch trình bằng Firebase AI Logic (hoặc mock)
     index.js           # chọn repository theo cấu hình
   components/          # ui.jsx (Seg, Avatar, En, icons), MapView, PlaceSearch,
                        # TripPrintSheet, ExpenseDialog, ErrorBoundary, useFieldDraft
-  screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab), AIDesk
+  screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab|GuideTab),
+                       # AIDesk, Translate, Profile
 tests/
   unit/*.test.mjs            # logic thuần — `npm test`, không cần emulator
   firestore-rules.test.mjs   # kiểm thử Security Rules trên emulator
@@ -293,7 +316,9 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
    `optimizeRoute` trong [`src/itinerary.js`](src/itinerary.js) nhận một hàm `distance`
    làm tham số, nên chỗ nối đã sẵn — cần một hàm trả khoảng cách đường bộ giữa hai điểm,
    lấy sẵn toàn bộ trước khi gọi vì hàm này phải đồng bộ.
-5. ~~Xuất PDF~~ — xong. Còn lại: i18n đầy đủ, app Flutter đồng bộ Firebase.
+5. ~~Xuất PDF~~ — xong.
+6. ~~Dịch cho người đi + cẩm nang bản địa~~ — xong, xem **Tính năng đã có**.
+   Còn lại: i18n đầy đủ cho giao diện, app Flutter đồng bộ Firebase.
 
 ## Còn nợ
 
@@ -302,7 +327,15 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 - Người tự rời chuyến có thể mang theo dòng thành viên của người khác: Security Rules
   ghim được *bao nhiêu* dòng ra đi chứ không ghim được *dòng nào*. Không phải leo thang
   quyền, và chủ chuyến thêm lại được — chi tiết trong CLAUDE.md.
-- **Nút `EN` là phụ đề, không phải i18n.** Dịch toàn bộ giao diện vẫn còn nguyên đó.
+- **Nút `EN` là phụ đề, không phải i18n.** Dịch toàn bộ giao diện vẫn còn nguyên đó —
+  18 nhãn có phụ đề, còn khoảng 740 chuỗi tiếng Việt nằm thẳng trong JSX. Sổ tay dịch là
+  công cụ cho *người đi*, không phải bản dịch của *giao diện*; hai việc khác nhau.
+- **Cẩm nang không nằm trong bản in PDF.** Nó đọc theo yêu cầu khi mở tab, còn
+  `TripPrintSheet` render từ dữ liệu chuyến đi đã có trong state — muốn in kèm thì phải
+  nạp trước mọi cẩm nang của chuyến, tức đảo lại chính lý do nó không gắn listener.
+- **Hai chuyến cùng đi một nơi phải soạn cẩm nang hai lần.** Có chủ ý: một collection
+  dùng chung mà client ghi được thì ai cũng đầu độc được bản của người khác, và rules
+  không đọc nội dung để phân biệt tốt xấu. Chi tiết trong CLAUDE.md.
 - **Trần quy mô đã biết:** màn Chuyến đi hiện số điểm dừng và tổng chi của *mọi* chuyến,
   và cả hai được tính từ subcollection chứ không lưu sẵn — nên `subscribeTrips` mở hai
   listener cho mỗi chuyến. Vài chục chuyến thì ổn; trên mức đó phải đếm sẵn trên document

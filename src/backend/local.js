@@ -1,4 +1,5 @@
 import { SEED_TRIPS } from '../data.js';
+import { cacheGuide, cachedGuide, forgetGuides } from './offline.js';
 import { cleanTrips, isObj } from './schema.js';
 
 /* Demo backend: the same repository interface as firestore.js, kept entirely
@@ -60,6 +61,23 @@ export async function updateTrip(tripId, fields) {
 
 export async function deleteTrip(tripId) {
   commit(load().filter((t) => t.id !== tripId));
+  forgetGuides(tripId);
+}
+
+/* The guidebook is a sub-collection in the cloud repository, so it is not part
+   of the trip object here either — it lives in the same device store the cloud
+   one falls back to when it is offline. Keeping it out of `trips` also keeps
+   it out of cleanTrip, which would drop a field it has never heard of. */
+export async function loadGuide(tripId, slug) {
+  return cachedGuide(tripId, slug);
+}
+
+export async function saveGuide(tripId, slug, guide) {
+  cacheGuide(tripId, slug, guide);
+}
+
+export async function removeGuide(tripId, slug) {
+  forgetGuides(tripId, slug);
 }
 
 /* `order` is implicit here — the array position is the order — so the argument

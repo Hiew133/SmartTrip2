@@ -7,11 +7,13 @@ import { useFieldDraft } from '../components/useFieldDraft.js';
 import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
 import MembersTab from './trip/MembersTab.jsx';
+import GuideTab from './trip/GuideTab.jsx';
 
 const TABS = [
   ['itin', 'Lịch trình & bản đồ'],
   ['budget', 'Ngân sách & chia tiền'],
   ['members', 'Thành viên'],
+  ['guide', 'Cẩm nang bản địa'],
 ];
 
 export default function Trip() {
@@ -137,6 +139,7 @@ export default function Trip() {
       {state.tripTab === 'itin' && <ItineraryTab trip={trip} editable={editable} />}
       {state.tripTab === 'budget' && <BudgetTab trip={trip} editable={editable} />}
       {state.tripTab === 'members' && <MembersTab trip={trip} role={role} />}
+      {state.tripTab === 'guide' && <GuideTab trip={trip} editable={editable} />}
     </div>
   );
 }

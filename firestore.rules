@@ -184,6 +184,34 @@ service cloud.firestore {
             && incoming().amount >= 0;
       }
 
+      /* The local guidebook: one document per destination inside the trip it
+         was written for. It lives here rather than in a shared /guides
+         collection on purpose — a collection anyone could write would let one
+         person poison what everybody else reads, and rules cannot look inside
+         the text to tell good content from bad. Duplicating Hội An across two
+         trips is the cheaper mistake.
+
+         Same limit as everywhere else: rules cannot walk a list, so the caps
+         are on how many rows there may be. The length of each row is clipped
+         on the way in and on the way out by backend/schema.js. */
+      function guideWellFormed() {
+        return incoming().get('dest', '') is string
+            && incoming().get('dest', '').size() <= 200
+            && incoming().get('lang', '') is string
+            && incoming().get('lang', '').size() <= 100
+            && incoming().get('currency', '') is string
+            && incoming().get('currency', '').size() <= 200
+            && incoming().get('summary', '') is string
+            && incoming().get('summary', '').size() <= 2000
+            && incoming().get('sections', []) is list
+            && incoming().get('sections', []).size() <= 20
+            && incoming().get('phrases', []) is list
+            && incoming().get('phrases', []).size() <= 60
+            && incoming().get('emergency', []) is list
+            && incoming().get('emergency', []).size() <= 20
+            && incoming().get('createdAt', 0) is number;
+      }
+
       match /days/{dayId} {
         allow read: if canRead();
         allow create, update: if canWrite() && dayWellFormed();
@@ -193,6 +221,12 @@ service cloud.firestore {
       match /expenses/{expenseId} {
         allow read: if canRead();
         allow create, update: if canWrite() && expenseWellFormed();
+        allow delete: if canWrite();
+      }
+
+      match /guide/{guideId} {
+        allow read: if canRead();
+        allow create, update: if canWrite() && guideWellFormed();
         allow delete: if canWrite();
       }
     }

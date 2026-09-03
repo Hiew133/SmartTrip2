@@ -1,15 +1,17 @@
 import {
-  collection, deleteDoc, doc, getDocs, onSnapshot, query, runTransaction,
+  collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, runTransaction,
   serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
-import { cleanTrip } from './schema.js';
+import { cacheGuide, cachedGuide, forgetGuides } from './offline.js';
+import { cleanGuide, cleanTrip } from './schema.js';
 
 /* Firestore layout
    ────────────────
    trips/{tripId}                    metadata, members, settle-up marks
    trips/{tripId}/days/{dayId}       one doc per day, stops inline as `items`
    trips/{tripId}/expenses/{expId}   one doc per expense
+   trips/{tripId}/guide/{slug}       one doc per destination, the local guidebook
 
    Days keep their stops inline because every stop edit here rewrites the whole
    day anyway (drag-to-reorder, optimise route) — a stops subcollection would
@@ -23,6 +25,8 @@ const daysRef = (tripId) => collection(db(), 'trips', tripId, 'days');
 const dayRef = (tripId, dayId) => doc(db(), 'trips', tripId, 'days', dayId);
 const expensesRef = (tripId) => collection(db(), 'trips', tripId, 'expenses');
 const expenseRef = (tripId, id) => doc(db(), 'trips', tripId, 'expenses', id);
+const guidesRef = (tripId) => collection(db(), 'trips', tripId, 'guide');
+const guideRef = (tripId, slug) => doc(db(), 'trips', tripId, 'guide', slug);
 
 /* memberIds, roles and pendingEmails are denormalised off `members` purely so
    the security rules can answer "may this uid read/write?" without reading
@@ -62,6 +66,15 @@ const dayDoc = (day, order) => ({
 const expenseDoc = (e) => ({
   name: e.name, cat: e.cat, payerId: e.payerId, amount: e.amount,
   createdAt: e.createdAt || Date.now(),
+});
+
+/* Written straight from cleanGuide's output, so the row caps the rules cannot
+   express have already been applied. Never spread the raw model answer in
+   here — the rules count rows, not characters. */
+const guideDoc = (g) => ({
+  dest: g.dest, lang: g.lang, currency: g.currency, summary: g.summary,
+  sections: g.sections, phrases: g.phrases, emergency: g.emergency,
+  createdAt: g.createdAt || Date.now(),
 });
 
 /* ── reads ──────────────────────────────────────────────────────────────── */
@@ -208,14 +221,15 @@ export async function updateTrip(tripId, fields) {
    the trip first would strand its days and expenses in the project forever
    with no client able to touch them. */
 export async function deleteTrip(tripId) {
-  const [days, expenses] = await Promise.all([
+  const [days, expenses, guides] = await Promise.all([
     getDocs(daysRef(tripId)),
     getDocs(expensesRef(tripId)),
+    getDocs(guidesRef(tripId)),
   ]);
 
   // one batch caps at 500 writes; a trip is nowhere near that, but a run of
   // several years of expenses should not be the thing that breaks deletion
-  const children = [...days.docs, ...expenses.docs];
+  const children = [...days.docs, ...expenses.docs, ...guides.docs];
   for (let i = 0; i < children.length; i += 400) {
     const batch = writeBatch(db());
     children.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
@@ -223,6 +237,45 @@ export async function deleteTrip(tripId) {
   }
 
   await deleteDoc(tripRef(tripId));
+  forgetGuides(tripId);            // the device copy outlives the document otherwise
+}
+
+/* ── guidebook ──────────────────────────────────────────────────────────────
+
+   Read on demand rather than through subscribeTrips. That listener already
+   opens two subscriptions per trip and says so in a warning; a third, for
+   content only one tab ever shows, would make the known ceiling a third lower
+   for nothing. A guidebook does not change while you are reading it.
+
+   Every read is written through to the device copy, and a failed read falls
+   back to it. Losing signal abroad is the normal case for this feature, not
+   the exception — see backend/offline.js. */
+
+export async function loadGuide(tripId, slug) {
+  try {
+    const snap = await getDoc(guideRef(tripId, slug));
+    const guide = snap.exists() ? cleanGuide(snap.data()) : null;
+    if (guide) cacheGuide(tripId, slug, guide);
+    return guide;
+  } catch (err) {
+    const offline = cachedGuide(tripId, slug);
+    if (offline) {
+      console.warn('SmartTrip · cẩm nang lấy từ bản lưu trên máy:', err);
+      return offline;
+    }
+    throw err;
+  }
+}
+
+export async function saveGuide(tripId, slug, guide) {
+  const payload = guideDoc(guide);
+  await setDoc(guideRef(tripId, slug), payload);
+  cacheGuide(tripId, slug, payload);
+}
+
+export async function removeGuide(tripId, slug) {
+  await deleteDoc(guideRef(tripId, slug));
+  forgetGuides(tripId, slug);
 }
 
 /* `order` is the day's index in the trip, and nothing else. It used to be

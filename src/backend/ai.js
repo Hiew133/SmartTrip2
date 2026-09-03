@@ -1,7 +1,7 @@
 import { SEED_TRIPS, newDay, newStop, uid } from '../data.js';
 import { AI_MODEL, firebaseEnabled } from './config.js';
 import { ai } from './firebase.js';
-import { cleanStop } from './schema.js';
+import { cleanGuide, cleanStop, cleanTranslation } from './schema.js';
 
 export const aiAvailable = firebaseEnabled;
 
@@ -67,23 +67,19 @@ function mockItinerary(dayCount) {
   };
 }
 
-/**
- * Ask Gemini for an itinerary and return it in the app's own trip shape.
- * Falls back to the seeded mock when no Firebase project is attached.
- */
-export async function generateItinerary(input) {
-  if (!firebaseEnabled) {
-    await new Promise((r) => setTimeout(r, 900));   // keep the skeleton visible
-    return mockItinerary(input.dayCount);
-  }
+/* ── talking to Gemini ──────────────────────────────────────────────────────
 
-  /* Loaded on demand: the Gemini SDK is a large chunk and only this one
-     screen ever needs it, so it stays out of the initial bundle. A failure
-     here is a build/serving problem, not something the person did — say so
-     rather than surfacing the bundler's own wording. */
-  let mod;
+   Three features ask the model something now, and all three fail in the same
+   two ways a project owner actually hits — App Check not enforced, AI Logic
+   not enabled — so the asking and the explaining live in one place. Each
+   caller brings its own schema, prompt and temperature, and gets back parsed
+   JSON it still has to sanitise. */
+
+/** Load the Gemini SDK on demand — it is a large chunk, and most sessions
+ *  never touch a screen that needs it. */
+async function loadSdk() {
   try {
-    mod = await import('firebase/ai');
+    return await import('firebase/ai');
   } catch (err) {
     console.error('SmartTrip · nạp SDK Gemini:', err);
     throw new Error(
@@ -91,20 +87,33 @@ export async function generateItinerary(input) {
       { cause: err },
     );
   }
+}
+
+/**
+ * One structured-output request. `schema` is a function of the SDK's Schema
+ * builder, because the builder only exists after the dynamic import.
+ *
+ * Every nested object in a schema has to be written as
+ * `Schema.object({ properties: { … } })` — leaving `properties` out at any
+ * level comes back as `400 Unknown name`, and the outer object being right is
+ * no protection at all.
+ */
+async function askModel({ schema, prompt, temperature = 0.9, whenUnreadable }) {
+  const mod = await loadSdk();
   const { Schema, getGenerativeModel } = mod;
 
   const model = getGenerativeModel(ai(mod), {
     model: AI_MODEL,
     generationConfig: {
       responseMimeType: 'application/json',
-      responseSchema: itinerarySchema(Schema),
-      temperature: 0.9,
+      responseSchema: schema(Schema),
+      temperature,
     },
   });
 
   let result;
   try {
-    result = await model.generateContent(buildPrompt(input));
+    result = await model.generateContent(prompt);
   } catch (err) {
     console.error('SmartTrip · Gemini:', err);
     const text = String(err?.message ?? '');
@@ -125,12 +134,28 @@ export async function generateItinerary(input) {
     throw new Error('Không gọi được trợ lý AI. Kiểm tra mạng rồi thử lại.', { cause: err });
   }
 
-  let parsed;
   try {
-    parsed = JSON.parse(result.response.text());
+    return JSON.parse(result.response.text());
   } catch {
-    throw new Error('Trợ lý trả về dữ liệu không đọc được. Thử soạn lại giúp mình.');
+    throw new Error(whenUnreadable);
   }
+}
+
+/**
+ * Ask Gemini for an itinerary and return it in the app's own trip shape.
+ * Falls back to the seeded mock when no Firebase project is attached.
+ */
+export async function generateItinerary(input) {
+  if (!firebaseEnabled) {
+    await new Promise((r) => setTimeout(r, 900));   // keep the skeleton visible
+    return mockItinerary(input.dayCount);
+  }
+
+  const parsed = await askModel({
+    schema: itinerarySchema,
+    prompt: buildPrompt(input),
+    whenUnreadable: 'Trợ lý trả về dữ liệu không đọc được. Thử soạn lại giúp mình.',
+  });
 
   const days = (Array.isArray(parsed?.days) ? parsed.days : [])
     .slice(0, input.dayCount)
@@ -150,4 +175,193 @@ export async function generateItinerary(input) {
     summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
     days,
   };
+}
+
+/* ── local guidebook ────────────────────────────────────────────────────────
+
+   One destination in, one guidebook out: how money and transport work, what is
+   rude, what to eat, and the phrases worth having ready. It is generated once
+   per destination and then read from the trip, so this is the expensive call
+   of the two and the one that must not be made twice for the same place. */
+
+const guideSchema = (Schema) => Schema.object({
+  properties: {
+    lang: Schema.string({ description: 'Tên tiếng Việt của ngôn ngữ bản địa, ví dụ "Tiếng Thái"' }),
+    currency: Schema.string({ description: 'Đồng tiền bản địa và tỷ giá thô so với VND' }),
+    summary: Schema.string({ description: 'Hai câu tóm tắt điều cần nhớ nhất, tiếng Việt' }),
+    sections: Schema.array({
+      items: Schema.object({
+        properties: {
+          title: Schema.string({ description: 'Tên mục, tiếng Việt, ví dụ "Đi lại"' }),
+          tips: Schema.array({
+            items: Schema.string({ description: 'Một điều cụ thể, làm được ngay, tiếng Việt' }),
+          }),
+        },
+      }),
+    }),
+    phrases: Schema.array({
+      items: Schema.object({
+        properties: {
+          vi: Schema.string({ description: 'Câu tiếng Việt' }),
+          local: Schema.string({ description: 'Câu đó viết bằng chữ bản địa' }),
+          roman: Schema.string({ description: 'Cách đọc ghi theo âm tiếng Việt' }),
+        },
+      }),
+    }),
+    emergency: Schema.array({
+      items: Schema.object({
+        properties: {
+          label: Schema.string({ description: 'Tên đầu mối, ví dụ "Cảnh sát du lịch"' }),
+          value: Schema.string({ description: 'Số điện thoại hoặc địa chỉ' }),
+        },
+      }),
+    }),
+  },
+});
+
+const guidePrompt = (dest) => [
+  `Viết cẩm nang bản địa ngắn cho người Việt lần đầu tới ${dest}.`,
+  '',
+  'Yêu cầu:',
+  '- 5 đến 7 mục: tiền bạc & thanh toán, đi lại, ăn uống, phong tục nên và không nên,',
+  '  an toàn, mua sắm & mặc cả. Mỗi mục 3 đến 5 gạch đầu dòng.',
+  '- Mỗi gạch đầu dòng phải là một điều cụ thể làm được ngay, kèm con số khi có',
+  '  (giá vé, giờ đóng cửa, mức tip). Không viết chung chung kiểu "nên tôn trọng văn hoá".',
+  '- 10 đến 14 câu giao tiếp thật sự cần: chào hỏi, cảm ơn, hỏi giá, mặc cả, gọi món,',
+  '  ăn chay, không cay, nhà vệ sinh ở đâu, gọi taxi, cấp cứu.',
+  '- Phần cách đọc ghi theo âm tiếng Việt, để người Việt đọc lên là người bản địa hiểu.',
+  '- 3 đến 5 đầu mối khẩn cấp: cảnh sát, cấp cứu, cảnh sát du lịch, đại sứ quán Việt Nam nếu có.',
+  '- Toàn bộ phần giải thích viết bằng tiếng Việt.',
+].join('\n');
+
+/** Demo-mode guidebook: honest about being a sample, still shaped like the real thing. */
+const mockGuide = (dest) => ({
+  dest,
+  lang: 'Tiếng bản địa',
+  currency: 'Chưa nối AI Logic nên chưa tra được tỷ giá',
+  summary: `Cẩm nang mẫu cho ${dest} — chế độ thử chưa gọi Gemini, nên đây là bản dựng sẵn để xem bố cục.`,
+  sections: [
+    {
+      title: 'Tiền bạc & thanh toán',
+      tips: [
+        'Đổi một ít tiền mặt ngay ở sân bay cho chặng taxi đầu tiên, phần còn lại đổi trong phố cho được giá.',
+        'Hỏi trước quán có nhận thẻ không — nhiều hàng ăn ngon chỉ nhận tiền mặt.',
+      ],
+    },
+    {
+      title: 'Đi lại',
+      tips: [
+        'Chụp màn hình địa chỉ bằng chữ bản địa để đưa tài xế xem; đọc tên theo tiếng Việt thường không ai hiểu.',
+        'Chốt giá hoặc yêu cầu bật đồng hồ trước khi xe lăn bánh.',
+      ],
+    },
+    {
+      title: 'Ăn uống',
+      tips: [
+        'Quán đông người bản địa vào giờ ăn là chỉ dấu đáng tin hơn mọi bảng xếp hạng.',
+        'Nói rõ mức cay và những thứ bạn không ăn được ngay lúc gọi món.',
+      ],
+    },
+  ],
+  phrases: [
+    { vi: 'Xin chào', local: '—', roman: 'nối Firebase AI Logic để có câu thật' },
+    { vi: 'Cảm ơn', local: '—', roman: 'nối Firebase AI Logic để có câu thật' },
+    { vi: 'Bao nhiêu tiền?', local: '—', roman: 'nối Firebase AI Logic để có câu thật' },
+  ],
+  emergency: [
+    { label: 'Chế độ thử', value: 'Chưa có số thật — xem README để bật Gemini' },
+  ],
+  createdAt: Date.now(),
+});
+
+/**
+ * Write the guidebook for one destination. The answer is sanitised here rather
+ * than at the call site, so whatever reaches the store is already the shape
+ * Firestore and the rules expect.
+ */
+export async function generateGuide({ dest }) {
+  const place = String(dest ?? '').trim();
+  if (!place) throw new Error('Chưa biết soạn cẩm nang cho nơi nào. Nhập tên điểm đến giúp mình.');
+
+  if (!firebaseEnabled) {
+    await new Promise((r) => setTimeout(r, 700));   // keep the skeleton visible
+    return cleanGuide(mockGuide(place));
+  }
+
+  const parsed = await askModel({
+    schema: guideSchema,
+    prompt: guidePrompt(place),
+    temperature: 0.6,               // facts, not flavour
+    whenUnreadable: 'Cẩm nang trả về không đọc được. Thử soạn lại giúp mình.',
+  });
+
+  const guide = cleanGuide({ ...parsed, dest: place, createdAt: Date.now() });
+  if (!guide) {
+    throw new Error('Chưa soạn được cẩm nang cho nơi này. Thử ghi tên đầy đủ hơn, ví dụ "Chiang Mai, Thái Lan".');
+  }
+  return guide;
+}
+
+/* ── translating one line ───────────────────────────────────────────────────
+
+   Cheap, frequent, and used while somebody is standing there waiting for an
+   answer, so it asks for less: the sentence, how to say it, what it literally
+   means back in Vietnamese, and one line of context. The literal reading is
+   there so the person can tell when the model has drifted — you cannot check a
+   translation you cannot read. */
+
+const translateSchema = (Schema) => Schema.object({
+  properties: {
+    text: Schema.string({ description: 'Bản dịch, viết bằng chữ của ngôn ngữ đích' }),
+    roman: Schema.string({ description: 'Cách đọc bản dịch, ghi theo âm tiếng Việt' }),
+    literal: Schema.string({ description: 'Nghĩa đen của bản dịch, dịch ngược lại tiếng Việt' }),
+    note: Schema.string({ description: 'Một câu lưu ý về mức lịch sự hoặc cách dùng, tiếng Việt' }),
+  },
+});
+
+const translatePrompt = (text, targetName) => [
+  `Dịch câu sau sang ${targetName}, để một khách du lịch nói với người bản địa.`,
+  '',
+  `Câu cần dịch: "${text}"`,
+  '',
+  'Yêu cầu:',
+  '- Dịch tự nhiên như người bản địa nói, không dịch từng chữ.',
+  '- Giữ mức lịch sự trung tính, hợp khi nói với người lạ.',
+  '- Phần cách đọc ghi theo âm tiếng Việt.',
+  '- Phần nghĩa đen dịch ngược bản dịch về tiếng Việt, để người dùng tự kiểm tra được.',
+  '- Lưu ý viết bằng tiếng Việt, một câu, và chỉ khi thật sự có gì đáng nói.',
+].join('\n');
+
+/**
+ * Translate one line for the phrasebook. `target` is a language code from
+ * phrasebook.js; `targetName` is what to call that language in the prompt.
+ */
+export async function translateText({ text, target, targetName }) {
+  const source = String(text ?? '').trim();
+  if (!source) throw new Error('Chưa có câu nào để dịch.');
+
+  if (!firebaseEnabled) {
+    await new Promise((r) => setTimeout(r, 500));
+    /* Demo mode has nothing to translate with, and inventing a fake foreign
+       sentence would be worse than saying so — someone would read it out. */
+    return cleanTranslation({
+      source,
+      text: source,
+      literal: source,
+      note: 'Chế độ thử chưa gọi Gemini nên câu này chưa được dịch. Xem README để bật AI Logic.',
+      target,
+      createdAt: Date.now(),
+    });
+  }
+
+  const parsed = await askModel({
+    schema: translateSchema,
+    prompt: translatePrompt(source, targetName),
+    temperature: 0.3,               // one right answer, not a creative one
+    whenUnreadable: 'Bản dịch trả về không đọc được. Thử lại giúp mình.',
+  });
+
+  const out = cleanTranslation({ ...parsed, source, target, createdAt: Date.now() });
+  if (!out) throw new Error('Chưa dịch được câu này. Thử viết ngắn lại, hoặc tách thành hai câu.');
+  return out;
 }

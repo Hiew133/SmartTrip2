@@ -42,7 +42,7 @@ function readSharedTripId() {
 }
 
 const defaultState = {
-  screen: 'login',           // login | trips | trip | ai | profile
+  screen: 'login',           // login | trips | trip | ai | translate | profile
   auth: 'in',                // login screen: in | up
   showEnglish: true,
 
@@ -59,7 +59,7 @@ const defaultState = {
   pendingTripId: readSharedTripId(),
 
   // trip detail
-  tripTab: 'itin',           // itin | budget | members
+  tripTab: 'itin',           // itin | budget | members | guide
   day: 0,
   focusIdx: -1,
 
@@ -273,6 +273,13 @@ export function AppProvider({ children }) {
         if (rest.length) await repo.reorderDays(id, rest);
       }),
       reorderDays: (orderedIds) => onTrip('đổi thứ tự ngày', (id) => repo.reorderDays(id, orderedIds)),
+
+      /* The guidebook is read when its tab opens, not through subscribeTrips —
+         see the note in backend/firestore.js. So it is the one piece of trip
+         content that does not live in `state.trips`, and the tab holds it. */
+      loadGuide: (slug) => onTrip('mở cẩm nang', (id) => repo.loadGuide(id, slug)),
+      saveGuide: (slug, guide) => onTrip('lưu cẩm nang', (id) => repo.saveGuide(id, slug, guide)),
+      removeGuide: (slug) => onTrip('xoá cẩm nang', (id) => repo.removeGuide(id, slug)),
 
       addExpense: (expense) => onTrip('thêm khoản chi', (id) => repo.addExpense(id, expense)),
       updateExpense: (expId, fields) => onTrip('sửa khoản chi', (id) => repo.updateExpense(id, expId, fields)),

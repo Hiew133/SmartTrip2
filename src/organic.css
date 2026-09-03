@@ -1001,6 +1001,76 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 }
 .st-crash-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 
+/* ── local guidebook & phrasebook ───────────────────────────────────────
+
+   Two screens, one type scale: the line a stranger has to read off the phone
+   is always the largest thing on it, and the Vietnamese around it is quiet.
+   That inversion is the whole design — a phrasebook where the Vietnamese
+   dominates is a phrasebook you cannot hand to anyone. */
+.st-guide-picker {
+  display: flex; flex-direction: column; gap: 10px;
+  margin: 22px 0 4px; padding: 18px 20px; border-radius: 20px;
+  background: color-mix(in srgb, var(--color-neutral-100) 46%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.st-guide-add { display: flex; gap: 9px; align-items: center; max-width: 460px; }
+.st-guide-add .input { flex: 1; }
+
+.st-guide { margin-top: 26px; }
+.st-guide-sec { margin-bottom: 28px; }
+.st-guide-sec h4 {
+  margin: 0 0 11px; font-size: 17px;
+  padding-bottom: 7px; border-bottom: 1px solid var(--color-divider);
+}
+.st-guide-sec ul { margin: 0; padding-left: 19px; display: flex; flex-direction: column; gap: 8px; }
+.st-guide-sec li { font-size: 14.5px; line-height: 1.55; }
+
+.st-guide-sos { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.st-guide-sos > div {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 13px 16px; border-radius: 16px;
+  background: color-mix(in srgb, var(--color-danger) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 22%, transparent);
+}
+.st-guide-sos span { font-size: 12.5px; font-weight: 600; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+.st-guide-sos b { font-size: 17px; font-variant-numeric: tabular-nums; }
+
+.st-phrases { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 12px; }
+.st-phrase {
+  display: flex; flex-direction: column; gap: 4px; text-align: left;
+  padding: 14px 17px; border-radius: 18px;
+  background: var(--color-neutral-100);
+  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.st-phrase-btn { cursor: pointer; font: inherit; color: inherit; transition: all var(--dur) var(--ease-out); }
+.st-phrase-btn:hover { border-color: var(--color-accent-400); transform: translateY(-1px); }
+.st-phrase-vi { font-size: 12.5px; font-weight: 600; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+.st-phrase-local { font-size: 19px; line-height: 1.35; word-break: break-word; }
+.st-phrase-roman { font-size: 12.5px; font-style: italic; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+
+.st-translate-in { resize: vertical; min-height: 84px; line-height: 1.5; font-size: 15px; }
+
+.st-translate-out {
+  margin-top: 26px; padding: 26px 28px; border-radius: 26px;
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-neutral-100));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+.st-translate-out:focus { outline: 2px solid var(--color-accent-400); outline-offset: 3px; }
+.st-translate-label {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+/* the line the other person reads — big enough to hold a phone out at arm's length */
+.st-translate-text { margin: 10px 0 0; font-size: 30px; line-height: 1.3; word-break: break-word; }
+.st-translate-roman { margin: 9px 0 0; font-size: 15px; font-style: italic; color: color-mix(in srgb, var(--color-text) 68%, transparent); }
+.st-translate-back { margin: 14px 0 0; font-size: 13.5px; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+.st-translate-note { margin: 8px 0 0; font-size: 13.5px; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+
+@media (max-width: 860px) {
+  .st-translate-text { font-size: 25px; }
+  .st-guide-add { flex-wrap: wrap; }
+}
+
 /* ── responsive ─────────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
   .st-2col { grid-template-columns: 1fr; gap: 30px; }
