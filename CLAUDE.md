@@ -124,6 +124,10 @@ Quy tắc rút ra: trường nào `derive()` sinh ra hoặc sinh từ nó thì �
   thành một lần ghi database.
 - **Khoá `settled` kèm số tiền** (`settleKey`). Đổi khoản chi ⇒ giao dịch cũ không còn,
   dấu "đã trả" tự hết hiệu lực. Đây là bản sửa cho một lỗi thật, đừng rút gọn lại.
+- **Tiền luôn hiển thị qua `fmt()`**, và khoảng trắng trước `₫` trong đó là
+  **non-breaking**. Khoảng trắng thường thì trình duyệt được phép xuống dòng ngay chỗ
+  đó, và trong ô hẹp nó làm đúng thế: số một dòng, mỗi chữ `₫` một dòng. Có ca test ghim
+  mã ký tự 160, đừng "dọn" nó thành dấu cách thường.
 
 ---
 

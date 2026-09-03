@@ -9,7 +9,12 @@ export const uid = (prefix = 'id') =>
 
 export const CATEGORIES = ['Đi lại', 'Lưu trú', 'Ăn uống', 'Vé tham quan', 'Khác'];
 
-export const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('vi-VN') + ' ₫';
+/* The space before ₫ is a non-breaking one, and that is the whole point: with
+   an ordinary space the browser is free to wrap there, and in a narrow card it
+   did — "16.000.000" on one line and a lone "₫" on the next, which reads as a
+   layout accident every time. One character here fixes it in the stat tiles,
+   the tags, the expense table and the printed sheet at once. */
+export const fmt = (n) => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')} ₫`;
 export const first = (name) => String(name || '').trim().split(/\s+/)[0] || '—';
 
 /* Photo helper — seeded so each place keeps the same image between renders.
@@ -104,7 +109,12 @@ export const newTrip = (over = {}) => ({
   plan: 0,
   days: [],
   expenses: [],
-  members: [{ id: uid('mem'), name: 'Minh Trần', email: 'minh.tran@gmail.com', role: 'owner' }],
+  /* A placeholder seat, not a person. createTrip replaces the identity on it
+     with whoever is signed in — it exists at all because cleanTrip drops a trip
+     with no members, so the factory cannot hand back an empty list. It used to
+     carry a name and gmail address copied from the mockups, which was one
+     forgotten overwrite away from shipping a stranger's address as a member. */
+  members: [{ id: uid('mem'), name: 'Chủ chuyến đi', email: 'owner@smarttrip.local', role: 'owner' }],
   settled: {},
   ...over,
 });

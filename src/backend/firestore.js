@@ -43,6 +43,14 @@ const derive = (members) => {
   };
 };
 
+/* `updatedAt` means "the trip document was last written", and nothing wider.
+   Adding a day or an expense used to bump it too, through a second write in
+   the same batch whose only job was to touch the parent — one edit costing two
+   writes, on a field nothing in the app reads. Worse, it half-promised to be a
+   last-changed time for the whole trip while updateDay, removeDay and the
+   expense edits never touched it, so it could never be trusted as one. If a
+   real "sửa gần nhất" is wanted later, it belongs on the child documents where
+   the edit actually happens, not as a tax on every write to the parent. */
 const tripDoc = (trip) => ({
   title: trip.title,
   seed: trip.seed,
@@ -106,14 +114,21 @@ export function subscribeTrips(user, cb, onError) {
   /* fromCache says the snapshot came from the local copy rather than the
      server. It matters after a permission error: Firestore keeps serving the
      last cached documents, and treating that as a fresh success would wipe the
-     error message and leave stale trips on screen looking perfectly healthy. */
-  let fromCache = true;
+     error message and leave stale trips on screen looking perfectly healthy.
+
+     It is the *trip query's* answer, deliberately — an emit triggered by a day
+     or expense snapshot reports the freshness of the trip list, not of that
+     child. That is what both readers want: the store uses it to decide whether
+     the list is server truth (clear the error, settle a share link), and the
+     list is the trip query. Children never emit before the query that found
+     them, so it is never read unset. */
+  let tripsFromCache = true;
   const emit = () => cb(
     [...meta.keys()]
       .map((id) => cleanTrip({ ...meta.get(id), id, days: days.get(id) ?? [], expenses: expenses.get(id) ?? [] }))
       .filter(Boolean)
       .sort((a, b) => a.createdAt - b.createdAt),
-    { fromCache },
+    { fromCache: tripsFromCache },
   );
 
   /* Firestore kills a listener for good once it errors. A day or expense
@@ -164,7 +179,7 @@ export function subscribeTrips(user, cb, onError) {
 
   let warned = false;
   const unsubTrips = onSnapshot(q, (snap) => {
-    fromCache = snap.metadata.fromCache;
+    tripsFromCache = snap.metadata.fromCache;
     if (import.meta.env.DEV && !warned && snap.size > LIVE_TRIP_WARN) {
       warned = true;
       console.warn(
@@ -284,17 +299,13 @@ export async function removeGuide(tripId, slug) {
    appended. Reordering would have broken it immediately. The caller passes the
    position it wants, and reorderDays rewrites the whole run. */
 export async function addDay(tripId, day, order) {
-  const batch = writeBatch(db());
-  batch.set(dayRef(tripId, day.id), dayDoc(day, order));
-  batch.update(tripRef(tripId), { updatedAt: serverTimestamp() });
-  await batch.commit();
+  await setDoc(dayRef(tripId, day.id), dayDoc(day, order));
 }
 
 /** Renumber every day from an explicit list of ids, first to last. */
 export async function reorderDays(tripId, orderedIds) {
   const batch = writeBatch(db());
   orderedIds.forEach((id, i) => batch.update(dayRef(tripId, id), { order: i }));
-  batch.update(tripRef(tripId), { updatedAt: serverTimestamp() });
   await batch.commit();
 }
 
@@ -307,10 +318,7 @@ export async function removeDay(tripId, dayId) {
 }
 
 export async function addExpense(tripId, expense) {
-  const batch = writeBatch(db());
-  batch.set(expenseRef(tripId, expense.id), expenseDoc(expense));
-  batch.update(tripRef(tripId), { updatedAt: serverTimestamp() });
-  await batch.commit();
+  await setDoc(expenseRef(tripId, expense.id), expenseDoc(expense));
 }
 
 export async function updateExpense(tripId, expenseId, fields) {
@@ -391,6 +399,17 @@ export async function claimInvites(user) {
 
 const sameList = (a = [], b = []) => a.length === b.length && a.every((x) => b.includes(x));
 
+/* roles is a map, so sameList cannot answer for it — and it is the one mirror
+   whose drift actually costs somebody something: a uid missing from it, or
+   holding a stale role, is a member the rules will not let edit their own trip.
+   Leaving it out of the comparison meant repairMirrors walked every trip and
+   then decided the one broken thing it could fix was not broken. */
+const sameMap = (a = {}, b = {}) => {
+  const ka = Object.keys(a ?? {});
+  const kb = Object.keys(b ?? {});
+  return ka.length === kb.length && ka.every((k) => a[k] === b?.[k]);
+};
+
 /* pendingEmails was added after some trips had already been written, so their
    invitations were invisible to claimInvites. This repairs the mirrors on any
    trip the caller owns. Idempotent: it only writes when the stored copy
@@ -407,8 +426,10 @@ export async function repairMirrors(user) {
 
   const drifted = (members, stored) => {
     const want = derive(members ?? []);
-    return sameList(want.pendingEmails, stored.pendingEmails)
-      && sameList(want.memberIds, stored.memberIds) ? null : want;
+    const same = sameList(want.pendingEmails, stored.pendingEmails)
+      && sameList(want.memberIds, stored.memberIds)
+      && sameMap(want.roles, stored.roles);
+    return same ? null : want;
   };
 
   for (const found of mine.docs) {

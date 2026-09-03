@@ -703,7 +703,12 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 .st-stop:hover .st-grip { opacity: 1; }
 
 /* — budget — */
-.st-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 13px; }
+/* 148px was narrower than the number it had to hold, so "16.000.000 ₫" wrapped
+   and what landed on the second line was the lone ₫. The real fix is the
+   non-breaking space in fmt() — see data.js — which makes an amount one
+   unbreakable word everywhere in the app; this track is simply wide enough to
+   hold that word, so the grid drops to fewer columns rather than overflow. */
+.st-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: 13px; }
 .st-stat {
   border-radius: 22px; padding: 17px 19px;
   background: color-mix(in srgb, var(--color-neutral-100) 58%, var(--color-surface));

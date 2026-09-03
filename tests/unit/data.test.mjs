@@ -80,10 +80,12 @@ test('hasCoords needs both halves', () => {
 });
 
 test('money and names render the way a Vietnamese reader expects', () => {
-  assert.equal(fmt(1500000), '1.500.000 ₫');
-  assert.equal(fmt(0), '0 ₫');
-  assert.equal(fmt(1500.6), '1.501 ₫', 'làm tròn, không hiện số lẻ');
-  assert.equal(fmt('không phải số'), '0 ₫');
+  assert.equal(fmt(1500000), '1.500.000 ₫');
+  assert.equal(fmt(0), '0 ₫');
+  assert.equal(fmt(1500.6), '1.501 ₫', 'làm tròn, không hiện số lẻ');
+  assert.equal(fmt('không phải số'), '0 ₫');
+  assert.equal(fmt(1500000).charCodeAt(9), 160,
+    'khoảng trắng trước ₫ phải là non-breaking — nếu không, ô hẹp đẩy mỗi chữ ₫ xuống dòng riêng');
   assert.equal(first('Minh Trần'), 'Minh');
   assert.equal(first('  Lan   Phạm '), 'Lan');
   assert.equal(first(''), '—');
