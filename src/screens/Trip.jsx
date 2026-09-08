@@ -1,21 +1,27 @@
 import { useState } from 'react';
 import { useApp, useActiveTrip, useTripRole, canEdit } from '../store.jsx';
 import { computeBudget } from '../budget.js';
-import { STATUS_LABEL, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
-import { Avatar, ChevronLeft, Photo, Printer, Users } from '../components/ui.jsx';
+import { STATUS_LABEL, dayLabel, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
+import { Avatar, ChevronLeft, Compass, Photo, Printer, Users } from '../components/ui.jsx';
 import { useFieldDraft } from '../components/useFieldDraft.js';
 import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
 import MembersTab from './trip/MembersTab.jsx';
 import GuideTab from './trip/GuideTab.jsx';
-import AssistantTab from './trip/AssistantTab.jsx';
 
-/* `edit` marks a tab that only exists for people who can change the trip. The
-   assistant is one: everything it offers ends in a write, so showing it to a
-   viewer would be a screen full of buttons that all fail. */
-const TABS = [
+/* One workspace, not five tabs.
+
+   The trip used to be a strip of tabs, and every one of them hid the others:
+   you could not read the itinerary while talking to the assistant, and picking
+   a day meant finding a row of pills halfway down the page. Now the rail on
+   the left holds the sections and, under the itinerary, the days themselves —
+   so where you are and what you are looking at are the same question.
+
+   The map and the assistant belong to the itinerary and live in its own
+   column (see ItineraryTab). The other sections are wide tables and get the
+   full width instead. */
+const SECTIONS = [
   ['itin', 'Lịch trình & bản đồ'],
-  ['assist', 'Trợ lý AI', 'edit'],
   ['budget', 'Ngân sách & chia tiền'],
   ['members', 'Thành viên'],
   ['guide', 'Cẩm nang bản địa'],
@@ -58,11 +64,12 @@ export default function Trip() {
   const stops = stopCount(trip);
   const status = tripStatus(trip);
 
-  /* tripTab is remembered across trips, and a viewer can land on a trip while
-     it still says "assist" from an editable one — fall back rather than render
-     a blank page under a tab strip that no longer has that tab. */
-  const tabs = TABS.filter(([, , needs]) => needs !== 'edit' || editable);
-  const tab = tabs.some(([key]) => key === state.tripTab) ? state.tripTab : 'itin';
+  /* tripTab is remembered across trips and older sessions wrote names that no
+     longer exist — fall back rather than render a blank page under a rail that
+     has no such section. */
+  const tab = SECTIONS.some(([key]) => key === state.tripTab) ? state.tripTab : 'itin';
+  // state.day is UI state and the day list can shrink under it; never index blindly
+  const dayIdx = Math.min(Math.max(state.day, 0), Math.max(trip.days.length - 1, 0));
 
   return (
     <div className="st-page" style={{ paddingTop: 24 }}>
@@ -136,22 +143,63 @@ export default function Trip() {
         </div>
       </header>
 
-      <nav className="st-tabs" aria-label="Khu vực của chuyến đi">
-        {tabs.map(([key, label]) => (
-          <button key={key} type="button"
-            className={`st-tab ${tab === key ? 'active' : ''}`}
-            aria-current={tab === key ? 'true' : undefined}
-            onClick={() => patch({ tripTab: key })}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <div className="st-trip-shell">
+        <aside className="st-rail">
+          {/* Everything the assistant offers ends in a write, so a viewer would
+              get a panel of buttons that all fail. It opens onto the itinerary
+              because that is the only place it can act. */}
+          {editable && (
+            <button type="button"
+              className={`st-rail-ai ${state.assistOpen ? 'active' : ''}`}
+              aria-pressed={state.assistOpen}
+              onClick={() => patch({ assistOpen: !state.assistOpen, tripTab: 'itin' })}>
+              <Compass width="16" height="16" />Trợ lý AI
+            </button>
+          )}
 
-      {tab === 'itin' && <ItineraryTab trip={trip} editable={editable} />}
-      {tab === 'assist' && <AssistantTab trip={trip} />}
-      {tab === 'budget' && <BudgetTab trip={trip} editable={editable} />}
-      {tab === 'members' && <MembersTab trip={trip} role={role} />}
-      {tab === 'guide' && <GuideTab trip={trip} editable={editable} />}
+          <nav className="st-rail-nav" aria-label="Khu vực của chuyến đi">
+            {SECTIONS.map(([key, label]) => (
+              <div key={key}>
+                <button type="button"
+                  className={`st-rail-item ${tab === key ? 'active' : ''}`}
+                  aria-current={tab === key ? 'true' : undefined}
+                  onClick={() => patch({ tripTab: key })}>
+                  {label}
+                </button>
+
+                {/* The days sit under the section they belong to, the way a
+                    contents page nests. They are only shown while that section
+                    is open — a list of days above "Ngân sách" would be a
+                    control that does nothing. */}
+                {key === 'itin' && tab === 'itin' && trip.days.length > 0 && (
+                  <ol className="st-rail-days">
+                    {trip.days.map((d, i) => (
+                      <li key={d.id}>
+                        <button type="button"
+                          className={`st-rail-day ${i === dayIdx ? 'active' : ''}`}
+                          aria-current={i === dayIdx ? 'true' : undefined}
+                          onClick={() => patch({ day: i, focusIdx: -1 })}>
+                          <span className="st-rail-day-when">{dayLabel(trip.startDate, i)}</span>
+                          <span className="st-rail-day-what">
+                            {d.place || `Ngày ${i + 1}`} · {d.items.length} điểm dừng
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="st-trip-main">
+          {tab === 'itin' && <ItineraryTab trip={trip} editable={editable} />}
+          {tab === 'budget' && <BudgetTab trip={trip} editable={editable} />}
+          {tab === 'members' && <MembersTab trip={trip} role={role} />}
+          {tab === 'guide' && <GuideTab trip={trip} editable={editable} />}
+        </div>
+      </div>
     </div>
   );
 }

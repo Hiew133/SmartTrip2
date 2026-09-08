@@ -166,8 +166,8 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Gỡ / rời thành viên | ✅ chủ gỡ được người khác và huỷ được lời mời; người khác tự rời được |
 | Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days`, `expenses` và `guide` |
 | Liên kết chia sẻ `/t/{id}` | ✅ mở đúng chuyến, giữ được qua bước đăng nhập |
-| Cẩm nang bản địa | ✅ một tab trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
-| Trợ lý trong chuyến đi | ✅ tab riêng, dạng trò chuyện — hỏi được, đề xuất một ngày, xem trước rồi mới ghi |
+| Cẩm nang bản địa | ✅ một mục trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
+| Trợ lý trong chuyến đi | ✅ panel trò chuyện dán trên bản đồ — hỏi được, đề xuất một ngày, xem trước rồi mới ghi |
 | Sổ tay dịch | ✅ màn `Dịch` trên nav, cache trong máy nên mở lại không tốn lượt gọi AI |
 
 > **`.env.local` không có trong git.** Máy nào chưa có thì app chạy **chế độ thử**:
@@ -603,6 +603,34 @@ thật, không lỗi khởi tạo nào.
 Nên nhánh Vertex mới chứng minh được tới lớp dựng backend, chưa tới câu trả lời của model.
 Người đầu tiên có đủ hai thứ trên nên thử cả ba tính năng — Trợ lý AI, Cẩm nang, Dịch —
 rồi cập nhật lại dòng này.
+
+## Màn chuyến đi là một không gian, không phải một chồng tab
+
+`Trip.jsx` dựng `.st-trip-shell`: **rail trái** (nút Trợ lý AI + các mục + danh sách ngày),
+**cột giữa** (nội dung mục đang mở), và với mục Lịch trình thì `ItineraryTab` tự chia tiếp
+thành danh sách + bản đồ (`.st-2col`).
+
+Trước đây đây là năm tab, và mỗi tab giấu bốn tab kia: không đọc được lịch trình trong lúc
+nói chuyện với trợ lý, còn chọn ngày thì phải tìm một hàng pill nằm lưng chừng trang. Giờ
+**ngày nằm trong rail, dưới đúng mục của nó**, nên "tôi đang ở đâu" và "tôi đang xem ngày
+nào" là cùng một câu hỏi. `state.day` vẫn là nguồn duy nhất, nên rail, lịch trình, bản đồ
+và trợ lý không thể bất đồng.
+
+Bản đồ và trợ lý **chỉ thuộc về mục Lịch trình**. Ngân sách và Thành viên là bảng rộng, ép
+chúng vào một nửa màn hình để giữ bản đồ luôn hiện là đổi cái dùng được lấy cái nhất quán.
+
+Ba cái bẫy đã dẫm phải khi dựng:
+
+- **`min-width: 0` cho các track của grid.** Grid item mặc định `min-width: auto`, nên khi
+  rail nằm xuống thành hàng ngang ở màn hẹp, một hàng nhãn không xuống dòng được đã thổi
+  cả cột rộng ra và đẩy thanh cuộn ngang lên cả trang. Đo được bằng
+  `documentElement.scrollWidth > clientWidth`.
+- **`isolation: isolate` cho `.st-mapwrap`.** Leaflet dùng z-index tới 700 cho pane và 1000
+  cho control, trong bất kỳ stacking context nào nó gặp — và nó đã vẽ đè lên panel trợ lý
+  dán trên bản đồ. Nhốt thang z-index của Leaflet lại trong bản đồ, đừng đi đua z-index.
+- **Panel neo vào bản đồ, không neo vào `figure`.** `.st-mapfig` có cả dòng ghi nguồn, nên
+  `bottom: 12px` tính theo nó là tràn xuống dưới bản đồ. Có `.st-mapstage` bọc riêng phần
+  bản đồ để làm mốc.
 
 ## Hai trợ lý, hai việc khác nhau
 

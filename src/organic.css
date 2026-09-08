@@ -642,9 +642,73 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 .st-avatars:hover > * { margin-left: -4px; }
 
 /* — two-column work area — */
+/* — the trip workspace: rail · content · (map) —
+   One screen instead of a strip of tabs. The rail carries the sections and,
+   under the itinerary, the days themselves, so "where am I" and "which day am
+   I looking at" stop being two separate questions in two separate places. */
+.st-trip-shell {
+  display: grid; grid-template-columns: 236px minmax(0, 1fr);
+  gap: 34px; align-items: start; margin-top: 26px;
+}
+/* min-width: 0 on both tracks, not decoration: a grid item defaults to
+   min-width auto, so one unbreakable row — the section labels once the rail
+   lies down at narrow widths — widens the whole column and puts a horizontal
+   scrollbar on the page. */
+.st-trip-shell > * { min-width: 0; }
+.st-rail { position: sticky; top: 88px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+/* The one button that is not navigation, so it does not look like the rest */
+.st-rail-ai {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  cursor: pointer; font: inherit; font-weight: 700; font-size: 14px;
+  padding: 12px 16px; border-radius: 15px; border: 1px solid transparent;
+  background: linear-gradient(120deg, var(--color-accent), var(--color-accent-600));
+  color: var(--color-bg); box-shadow: var(--shadow-sm);
+  transition: transform 140ms var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.st-rail-ai:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.st-rail-ai.active {
+  background: var(--color-surface); color: var(--color-accent-800);
+  border-color: var(--color-accent-400); box-shadow: none;
+}
+
+.st-rail-nav { display: flex; flex-direction: column; gap: 2px; }
+.st-rail-item {
+  display: block; width: 100%; text-align: left;
+  cursor: pointer; font: inherit; font-weight: 600; font-size: 14px;
+  padding: 10px 14px; border-radius: 12px; border: 0; background: transparent;
+  color: color-mix(in srgb, var(--color-text) 72%, transparent);
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.st-rail-item:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); color: var(--color-text); }
+.st-rail-item.active { background: var(--color-text); color: var(--color-bg); }
+
+/* Days nest under their section the way a contents page nests, with a rule
+   down the left so the indent reads as belonging rather than as drift. */
+.st-rail-days {
+  list-style: none; margin: 4px 0 10px; padding: 2px 0 2px 12px;
+  border-left: 1.5px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+  margin-left: 14px; display: flex; flex-direction: column; gap: 1px;
+}
+.st-rail-day {
+  display: block; width: 100%; text-align: left;
+  cursor: pointer; font: inherit; padding: 7px 11px; border-radius: 10px;
+  border: 0; background: transparent; color: var(--color-text);
+  transition: background var(--dur) var(--ease-out);
+}
+.st-rail-day:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.st-rail-day.active { background: var(--color-accent-100); }
+.st-rail-day.active .st-rail-day-when { color: var(--color-accent-800); }
+.st-rail-day-when { display: block; font-size: 13px; font-weight: 700; }
+.st-rail-day-what {
+  display: block; font-size: 12px; margin-top: 1px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .st-2col {
   display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: 44px; align-items: start; margin-top: 30px;
+  gap: 44px; align-items: start; margin-top: 4px;
 }
 .st-mapfig { margin: 0; position: sticky; top: 88px; }
 
@@ -820,10 +884,31 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
    what you asked for next to what came back. The person's own words sit on
    the accent, the assistant's on paper, so a glance tells you who said what
    without reading a single word. */
-.st-chat { display: flex; flex-direction: column; gap: 16px; max-width: 76ch; }
+/* Docked over the map, the way a chat window sits over a page. It covers the
+   lower part of the map rather than the whole of it, so the pins the
+   conversation is about stay visible above it. */
+.st-assist-dock {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2;
+  max-height: calc(100% - 84px); display: flex;
+  border-radius: 20px; overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+  box-shadow: var(--shadow-lg);
+  animation: st-pop 240ms var(--ease-out) both;
+}
+.st-mapstage { position: relative; }
+
+.st-chat { display: flex; flex-direction: column; gap: 12px; width: 100%; min-height: 0; padding: 14px 16px 16px; }
+.st-chat-bar { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.st-chat-close {
+  cursor: pointer; border: 0; background: transparent; color: var(--color-text);
+  display: inline-flex; padding: 6px; border-radius: 9px; flex: none;
+  transition: background var(--dur) var(--ease-out);
+}
+.st-chat-close:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
 .st-chat-head {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding-bottom: 14px; border-bottom: 1px solid var(--color-divider);
+  padding-bottom: 12px; border-bottom: 1px solid var(--color-divider);
 }
 .st-chat-context {
   font-size: 12.5px; font-weight: 600;
@@ -834,7 +919,7 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
    a conversation that pushes its own input off the screen is unusable. */
 .st-chat-log {
   display: flex; flex-direction: column; gap: 14px;
-  min-height: 220px; max-height: 58vh; overflow-y: auto;
+  min-height: 120px; flex: 1; overflow-y: auto;
   padding: 4px 2px 6px; scroll-behavior: smooth;
 }
 .st-chat-row { display: flex; }
@@ -914,7 +999,11 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 
 /* — Leaflet map, warm paper treatment (from map-organic.html) — */
 .st-mapwrap {
-  position: relative; overflow: hidden; background: #f0e2cb;
+  /* isolate, so Leaflet's own z-index scale stays inside the map. Its panes go
+     up to 700 and its controls to 1000, all in whatever stacking context they
+     find — which is how they ended up painting over the assistant panel docked
+     on top of the map. */
+  position: relative; overflow: hidden; isolation: isolate; background: #f0e2cb;
   border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
   box-shadow: var(--shadow-md);
 }
@@ -1168,6 +1257,34 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 @media (max-width: 1080px) {
   .st-2col { grid-template-columns: 1fr; gap: 30px; }
   .st-mapfig { position: static; }
+
+  /* Below this width there is no room for three columns, so the rail lies
+     down into a scrolling strip along the top — the same sections in the same
+     order, just read left to right. The day list goes with it: days are a
+     horizontal row again, which is what they were before the rail existed. */
+  .st-trip-shell { grid-template-columns: 1fr; gap: 18px; }
+  .st-rail { position: static; flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .st-rail-ai { width: auto; padding: 9px 15px; font-size: 13px; }
+  .st-rail-nav {
+    flex-direction: row; flex: 1 1 0; min-width: 0; gap: 4px;
+    overflow-x: auto; padding-bottom: 4px;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+  }
+  .st-rail-nav > div { display: contents; }
+  .st-rail-item { width: auto; white-space: nowrap; padding: 9px 14px; }
+  .st-rail-days {
+    order: 99; flex-basis: 100%; flex-direction: row; overflow-x: auto;
+    margin: 0; padding: 0; border-left: 0; gap: 6px;
+  }
+  .st-rail-day { width: auto; white-space: nowrap; }
+  .st-rail-day-what { display: none; }
+
+  /* A floating panel on a map that is now full width would cover the pins it
+     is talking about, so it becomes an ordinary block under the map. */
+  .st-assist-dock {
+    position: static; max-height: none; margin-top: 14px;
+    animation: none;
+  }
   .st-login { grid-template-columns: 1fr; }
   .st-login-art { min-height: 230px; order: -1; }
   .st-login-form { justify-content: center; padding: 42px 28px 64px; }

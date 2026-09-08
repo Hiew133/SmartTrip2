@@ -20,7 +20,7 @@ npm run test:rules # test Security Rules trên emulator (cần JDK 21+)
 |---|---|
 | Đăng nhập / Đăng ký | Firebase Auth: Google + Email/Password (chế độ thử khi chưa nối Firebase) |
 | Chuyến đi của tôi | Danh sách chuyến đi dạng card, tìm kiếm & lọc theo trạng thái, tạo chuyến trống |
-| Chi tiết chuyến đi | 5 tab: **Lịch trình & bản đồ**, **Trợ lý AI**, **Ngân sách & chia tiền**, **Thành viên**, **Cẩm nang bản địa** |
+| Chi tiết chuyến đi | Một không gian ba cột: cột trái là các mục + danh sách ngày, giữa là nội dung, phải là bản đồ với trợ lý dán lên trên |
 | Dịch | Sổ tay dịch: gõ câu tiếng Việt, đưa màn hình cho người bản địa đọc |
 | Trợ lý AI | Form soạn lịch trình → loading → bản nháp đúng số ngày đã chọn |
 
@@ -94,12 +94,16 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
 - **Trợ lý AI thật** bằng Firebase AI Logic (Gemini) với structured output, tạo được chuyến đi
   mới thẳng từ bản nháp. Form hỏi **ngày khởi hành và ngày kết thúc** rồi tự suy ra số ngày,
   **số người gõ tay**, và phong cách có ô **"Khác"** để tự viết thứ bạn quan tâm.
-- **Trợ lý ngay trong chuyến đi** — tab thứ hai của mỗi chuyến, và nó là một **cuộc trò
-  chuyện**: nhắn như nhắn cho một người bạn rành đường, hỏi lại được, nói tiếp được
+- **Trợ lý ngay trong chuyến đi** — một **cuộc trò chuyện** dán lên bản đồ, mở bằng nút
+  ở đầu cột trái. Nhắn như nhắn cho một người bạn rành đường, hỏi lại được, nói tiếp được
   ("thêm một quán nữa" hiểu "nữa" là gì). Hỏi thông tin thì nó trả lời; muốn đổi lịch trình
-  thì nó kèm theo một đề xuất cho **đúng một ngày**, đánh dấu **mới** vào những điểm dừng
-  chưa có. Không gì được ghi vào chuyến đi cho tới khi bạn bấm áp dụng, và bấm xong vẫn ở
-  lại trong cuộc trò chuyện để nói tiếp.
+  thì nó kèm theo một đề xuất cho **đúng một ngày** — chính là ngày đang mở ở cột giữa —
+  và đánh dấu **mới** vào những điểm dừng chưa có. Không gì được ghi vào chuyến đi cho tới
+  khi bạn bấm áp dụng; bấm xong lịch trình bên cạnh vẽ lại ngay, không phải đi đâu cả.
+- **Một không gian, không phải năm tab** — cột trái giữ các mục và danh sách ngày, cột giữa
+  là nội dung, cột phải là bản đồ. Chọn ngày ở cột trái thì lịch trình, bản đồ và trợ lý
+  cùng nói về ngày đó. Màn hẹp thì cột trái nằm xuống thành một dải ngang và trợ lý thành
+  một khối dưới bản đồ.
 - Mọi thứ đọc từ backend đều đi qua bộ kiểm tra shape, nên dữ liệu hỏng không làm sập app;
   khi chưa nối Firebase thì dùng localStorage (`smarttrip-v2`).
 

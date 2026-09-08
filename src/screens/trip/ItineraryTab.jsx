@@ -4,10 +4,11 @@ import { dayLabel, fmt, hasCoords, newDay, newStop } from '../../data.js';
 import { byTime, isOutOfOrder, moveItem, optimizeRoute, routeLengthKm } from '../../itinerary.js';
 import { formatDuration } from '../../maps.js';
 import { basemap, roadDistance, roadRoutingAvailable } from '../../backend/maps.js';
-import { Check, ChevronDown, ChevronUp, En, Grip, Plus, Route, Seg } from '../../components/ui.jsx';
+import { Check, ChevronDown, ChevronUp, En, Grip, Plus, Route } from '../../components/ui.jsx';
 import { useFieldDraft } from '../../components/useFieldDraft.js';
 import { useRoadRoute } from '../../components/useRoadRoute.js';
 import PlaceSearch from '../../components/PlaceSearch.jsx';
+import AssistantPanel from './AssistantPanel.jsx';
 /* Leaflet is 150 kB and only this tab needs it. People land on the trip list
    first, so loading it lazily takes it off the critical path for every screen
    before this one. The fallback is the same box at the same height, so nothing
@@ -121,11 +122,6 @@ export default function ItineraryTab({ trip, editable }) {
     patch({ focusIdx: -1 });
   };
 
-  const selectDay = (i) => {
-    patch({ day: i, focusIdx: -1 });
-    setUndo(null); setEditId(null); setConfirmDay(false);
-  };
-
   const onDrop = (to) => {
     if (dragIdx < 0 || dragIdx === to) return;
     reorder(moveItem(day.items, dragIdx, to), 'đổi thứ tự');
@@ -232,12 +228,10 @@ export default function ItineraryTab({ trip, editable }) {
           </div>
         )}
 
+        {/* The day picker used to live here as a row of pills. It is in the
+            rail now, next to the sections, so choosing a day and knowing where
+            you are are the same act. */}
         <div className="st-dayhead">
-          {trip.days.length > 0 && (
-            <Seg ariaLabel="Chọn ngày" options={trip.days.map((d, i) => ({
-              key: d.id, label: `Ngày ${i + 1}`, active: i === dayIdx, onClick: () => selectDay(i),
-            }))} />
-          )}
           {editable && (
             <button type="button" className="btn btn-ghost" style={{ fontSize: 13 }} onClick={addDay}>
               <Plus width="15" height="15" />Thêm ngày
@@ -409,10 +403,29 @@ export default function ItineraryTab({ trip, editable }) {
       </section>
 
       <figure className="st-mapfig">
-        <Suspense fallback={<div className="st-mapwrap" style={{ height: 580 }} />}>
-          <MapView stops={day?.items ?? []} focusIdx={state.focusIdx}
-            routePath={route?.path ?? null} onBasemap={setDrawnBy} style={{ height: 580 }} />
-        </Suspense>
+        {/* The stage wraps only the map, so the docked panel is positioned
+            against the map and not against the caption underneath it. */}
+        <div className="st-mapstage">
+          <Suspense fallback={<div className="st-mapwrap" style={{ height: 580 }} />}>
+            <MapView stops={day?.items ?? []} focusIdx={state.focusIdx}
+              routePath={route?.path ?? null} onBasemap={setDrawnBy} style={{ height: 580 }} />
+          </Suspense>
+
+          {/* Docked over the map rather than given a tab of its own: the day it
+              rewrites is the day on screen, and applying a change redraws the
+              pins under it without anyone navigating anywhere.
+
+              Keyed by the day so switching day starts a fresh conversation —
+              see the note in AssistantPanel about why the thread must not
+              outlive the day it was about. */}
+          {editable && state.assistOpen && (
+            <div className="st-assist-dock">
+              <AssistantPanel key={dayIdx} trip={trip} dayIdx={dayIdx}
+                onClose={() => patch({ assistOpen: false })} />
+            </div>
+          )}
+        </div>
+
         <figcaption style={{ marginTop: 10, fontSize: 12 }}>
           Bản đồ © {mapCredit} · ghim đang chọn đổi sang màu rêu
           <En> · tap a stop to locate it</En>

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../store.jsx';
 import { dayLabel, fmt, newDay, uid } from '../../data.js';
 import { aiAvailable, askAssistant } from '../../backend/index.js';
-import { Check, En, Plus, Seg } from '../../components/ui.jsx';
+import { Check, En, Minus, Plus, Seg } from '../../components/ui.jsx';
 
-/* The assistant that lives inside a trip, as a conversation.
+/* The assistant, as a conversation docked over the map beside the itinerary.
 
    Two rules shape everything here.
 
@@ -12,12 +12,13 @@ import { Check, En, Plus, Seg } from '../../components/ui.jsx';
    reads a proposal and presses Áp dụng. A model that edits an itinerary in
    place is a model that quietly moves the restaurant somebody already booked.
 
-   And it talks about one day at a time. Which day is picked with the chips
-   above the conversation, not inferred from the sentence — guessing wrong
-   there means writing over a day nobody was discussing, and no amount of
-   chat-like polish is worth that. Everything else is a conversation: follow-ups
-   work ("thêm một quán nữa"), questions get answers instead of a rewritten
-   day, and the thread stays on screen so you can see what you asked for. */
+   And it talks about one day at a time — the day the itinerary next to it is
+   showing, chosen in the rail rather than inferred from the sentence. Guessing
+   that from Vietnamese prose means writing over a day nobody was discussing,
+   and no amount of chat-like polish is worth that. Everything else is a
+   conversation: follow-ups work ("thêm một quán nữa"), questions get answers
+   instead of a rewritten day, and the thread stays on screen beside the day it
+   is about. */
 
 const OPENERS = {
   edit: [
@@ -50,7 +51,7 @@ function Typing() {
   );
 }
 
-function PlanCard({ items, isNew, applied, onApply, onView, busy, mode }) {
+function PlanCard({ items, isNew, applied, onApply, busy, mode }) {
   const cost = items.reduce((s, i) => s + i.cost, 0);
   return (
     <div className="st-chat-plan">
@@ -71,15 +72,9 @@ function PlanCard({ items, isNew, applied, onApply, onView, busy, mode }) {
         ))}
       </div>
       {applied ? (
-        /* Applying does not navigate away: the thread is the point, and losing
-           it to change one day would make follow-ups impossible. The way over
-           is offered instead of taken. */
-        <p className="st-chat-applied">
-          <Check width="14" height="14" />Đã ghi vào chuyến đi
-          <button type="button" className="st-linkbtn" style={{ marginLeft: 6 }} onClick={onView}>
-            Xem trên lịch trình
-          </button>
-        </p>
+        /* No "go and look" link any more: the itinerary is in the next column
+           and has already redrawn. That is what the new layout bought. */
+        <p className="st-chat-applied"><Check width="14" height="14" />Đã ghi vào lịch trình</p>
       ) : (
         <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" className="btn btn-primary" style={{ fontSize: 13 }} onClick={onApply} disabled={busy}>
@@ -99,21 +94,26 @@ function PlanCard({ items, isNew, applied, onApply, onView, busy, mode }) {
   );
 }
 
-export default function AssistantTab({ trip }) {
-  const { patch, notify, actions } = useApp();
+export default function AssistantPanel({ trip, dayIdx, onClose }) {
+  const { notify, actions } = useApp();
   const [mode, setMode] = useState('edit');       // edit | add
-  const [dayIdx, setDayIdx] = useState(0);
   const [thread, setThread] = useState([]);
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
   const [applyingId, setApplyingId] = useState(null);
   const endRef = useRef(null);
 
-  /* The day list can shrink under this tab the same way it can under the
-     itinerary, so never index blindly. */
+  /* The day is the one the itinerary beside this panel is showing — picked in
+     the rail, not in here. That is the whole point of the panel living next to
+     the day instead of on a tab of its own: what you are reading and what the
+     assistant will rewrite are the same day, and there is no second control
+     that can disagree with the first.
+
+     Trip.jsx remounts this component when the day changes (key={dayIdx}), so
+     the thread resets on its own — carrying it over would leave "thêm một quán
+     nữa" pointing at a day that is no longer the one being written to. */
   const idx = Math.min(Math.max(dayIdx, 0), Math.max(trip.days.length - 1, 0));
   const day = trip.days[idx] ?? null;
-  const showDayPicker = mode === 'edit' && trip.days.length > 0;
 
   const people = Math.max(1, trip.members.length);
   const budgetPerPerson = trip.plan > 0 ? Math.round(trip.plan / people) : 0;
@@ -125,11 +125,10 @@ export default function AssistantTab({ trip }) {
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }, [thread.length, thinking]);
 
-  /* Switching day or mode starts a new conversation. Carrying the thread over
-     would leave "thêm một quán nữa" pointing at a day that is no longer the
-     one being written to. */
-  const retarget = (next) => {
-    next();
+  /* Switching mode starts a new conversation, for the same reason switching
+     day does: the thing about to be written has changed. */
+  const setModeFresh = (next) => {
+    setMode(next);
     setThread([]);
     setDraft('');
   };
@@ -209,8 +208,6 @@ export default function AssistantTab({ trip }) {
     setApplyingId(null);
   };
 
-  const view = (m) => patch({ tripTab: 'itin', day: m.viewIdx ?? 0, focusIdx: -1 });
-
   const onKeyDown = (e) => {
     // Enter sends, Shift+Enter is a new line — the way every chat box works
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -221,24 +218,24 @@ export default function AssistantTab({ trip }) {
 
   return (
     <section className="st-chat">
-      <div className="st-chat-head">
-        <Seg ariaLabel="Việc muốn trợ lý làm" options={[
-          { label: 'Sửa một ngày', active: mode === 'edit', onClick: () => retarget(() => setMode('edit')) },
-          { label: 'Thêm ngày mới', active: mode === 'add', onClick: () => retarget(() => setMode('add')) },
-        ]} />
-        {showDayPicker && (
-          <Seg ariaLabel="Chọn ngày để nói tới" options={trip.days.map((d, i) => ({
-            key: d.id,
-            label: `Ngày ${i + 1}`,
-            active: i === idx,
-            onClick: () => retarget(() => setDayIdx(i)),
-          }))} />
-        )}
+      <div className="st-chat-bar">
+        <b>Trợ lý AI</b>
         <span className="st-chat-context">
           {mode === 'add'
-            ? `Ngày mới sẽ là ngày ${trip.days.length + 1} của chuyến`
-            : day && `${dayLabel(trip.startDate, idx)} · ${day.place || `Ngày ${idx + 1}`} · ${day.items.length} điểm dừng`}
+            ? `Ngày mới sẽ là ngày ${trip.days.length + 1}`
+            : day && `${dayLabel(trip.startDate, idx)} · ${day.place || `Ngày ${idx + 1}`}`}
         </span>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="st-chat-close" aria-label="Đóng trợ lý" onClick={onClose}>
+          <Minus width="15" height="15" />
+        </button>
+      </div>
+
+      <div className="st-chat-head">
+        <Seg ariaLabel="Việc muốn trợ lý làm" options={[
+          { label: 'Sửa ngày này', active: mode === 'edit', onClick: () => setModeFresh('edit') },
+          { label: 'Thêm ngày mới', active: mode === 'add', onClick: () => setModeFresh('add') },
+        ]} />
       </div>
 
       <div className="st-chat-log">
@@ -275,7 +272,6 @@ export default function AssistantTab({ trip }) {
                   busy={applyingId === m.id}
                   isNew={(s) => m.mode === 'add' || !m.before.has(s.name.trim().toLowerCase())}
                   onApply={() => apply(m)}
-                  onView={() => view(m)}
                 />
               )}
             </div>

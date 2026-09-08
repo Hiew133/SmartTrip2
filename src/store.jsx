@@ -59,9 +59,13 @@ const defaultState = {
   pendingTripId: readSharedTripId(),
 
   // trip detail
-  tripTab: 'itin',           // itin | budget | members | guide | assist
+  tripTab: 'itin',           // itin | budget | members | guide
   day: 0,
   focusIdx: -1,
+  /* The assistant is a panel docked over the map, not a screen of its own, so
+     whether it is open is layout state — the rail opens it and the itinerary
+     renders it, and neither owns the other. */
+  assistOpen: false,
 
   // expense dialog
   showAdd: false,

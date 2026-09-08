@@ -29,6 +29,10 @@ export const Printer = (p) => (
 export const Plus = (p) => (
   <svg {...ico} {...p}><path d="M5 12h14" /><path d="M12 5v14" /></svg>
 );
+/* collapse, not close: the assistant panel folds away rather than being dismissed */
+export const Minus = (p) => (
+  <svg {...ico} {...p}><path d="M5 12h14" /></svg>
+);
 /* a compass rose, not the usual "sparkles" wand */
 export const Compass = (p) => (
   <svg {...ico} {...p}>
