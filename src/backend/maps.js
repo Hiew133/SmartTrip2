@@ -89,6 +89,23 @@ function shrug(err, what) {
   return null;
 }
 
+/* A 200 whose body is not the shape we asked for is the failure mode that
+   hides: everything degrades to straight lines and nothing looks broken.
+
+   It is also the likeliest one. Goong's published example for DistanceMatrix
+   shows a single `origins` value with several `destinations`; asking for a
+   full N×N matrix by joining origins with `|` is an extrapolation from that.
+   If it turns out they do not serve it, this warning is where it says so,
+   rather than the optimiser quietly measuring in straight lines forever. */
+function unusable(what, json) {
+  console.warn(
+    `SmartTrip · Goong ${what} trả lời 200 nhưng không đúng shape mong đợi — `
+    + 'đang dùng đường chim bay thay thế. Kiểm tra tham số gửi đi và câu trả lời dưới đây.',
+    json,
+  );
+  return null;
+}
+
 /**
  * The real road line through a day's stops, in the order they are listed.
  *
@@ -107,8 +124,10 @@ export async function roadRoute(stops, { signal } = {}) {
   if (hit) return hit;
 
   try {
-    const found = parseDirection(await askGoong(directionUrl(points, goongApiKey), signal));
-    if (found) remember(routes, key, found);
+    const json = await askGoong(directionUrl(points, goongApiKey), signal);
+    const found = parseDirection(json);
+    if (!found) return unusable('Direction', json);
+    remember(routes, key, found);
     return found;
   } catch (err) {
     return shrug(err, 'Direction');
@@ -141,7 +160,7 @@ export async function roadDistance(stops, { signal } = {}) {
   try {
     const json = await askGoong(distanceMatrixUrl(points, points, goongApiKey), signal);
     const matrix = parseDistanceMatrix(json, points.length, points.length);
-    if (!matrix) return null;
+    if (!matrix) return unusable('DistanceMatrix', json);
     const distance = roadDistanceFn(points, matrix);
     remember(matrices, key, distance);
     return distance;

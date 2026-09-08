@@ -470,6 +470,18 @@ Cả gateway của Goong **kiểm khoá trước khi định tuyến**, nên `40
 giống hệt nhau cho endpoint có thật và endpoint bịa. Đừng dùng mã lỗi để đoán xem một
 endpoint có tồn tại hay không — đã thử, nó nói dối.
 
+### Giả định chưa kiểm chứng được: `origins` nhiều giá trị
+
+Ví dụ chính thức của `DistanceMatrix` chỉ có **một** `origins` và nhiều `destinations`.
+Việc nối `origins` bằng `|` để xin cả ma trận N×N là **suy ra**, chưa xác nhận trên khoá
+thật — tài khoản Goong lúc viết code vẫn đang chờ duyệt thủ công.
+
+Nếu họ không phục vụ kiểu đó thì `parseDistanceMatrix` thấy sai kích thước và trả null,
+tức là *Tối ưu tuyến đường* âm thầm quay về đường chim bay — hỏng mà nhìn không ra. Vì thế
+có `unusable()`: một câu trả lời **200 nhưng sai shape** in cảnh báo kèm nguyên văn JSON,
+thay vì lặng lẽ đi tiếp. Người đầu tiên cắm khoá thật vào nên mở Console xem dòng đó có
+hiện không.
+
 ### Bản đồ nền của Goong là **vector**, Leaflet không đọc được
 
 Style của Goong là `https://tiles.goong.io/assets/<tên>.json` cho MapLibre/Mapbox GL —
