@@ -6,12 +6,6 @@ import { ArrowRight, Compass, En, Seg } from '../components/ui.jsx';
 
 const STYLE_CHIPS = ['Ẩm thực', 'Biển đảo', 'Văn hoá', 'Nghỉ dưỡng', 'Chụp ảnh', 'Khám phá đêm'];
 
-/* The chips are a shortcut for the number beside them, not the source of it.
-   Picking one fills the count in; typing over the count is always allowed,
-   because "Nhóm bạn" is not always four people and the budget for the whole
-   group is computed from whatever that number really is. */
-const PARTY_SIZE = { 'Một mình': 1, 'Cặp đôi': 2, 'Nhóm bạn': 4, 'Gia đình': 4 };
-
 /** The chip that reveals a free-text box; kept out of STYLE_CHIPS so it can never be sent as a style. */
 const OTHER = 'Khác…';
 
@@ -113,7 +107,6 @@ export default function AIDesk() {
         date: state.aiDate,
         endDate: state.aiEndDate,
         dayCount,
-        party: state.aiParty,
         partySize: party,
         pace: state.aiPace,
         styles,
@@ -133,7 +126,7 @@ export default function AIDesk() {
       title: draft.title || state.aiDest.split(',')[0].trim() || 'Chuyến đi mới',
       seed: `ai-${Math.random().toString(36).slice(2, 8)}`,
       alt: 'Ảnh bìa chuyến đi do AI soạn',
-      body: draft.summary || `Bản nháp AI · ${state.aiParty} (${party} người) · nhịp ${state.aiPace.toLowerCase()}.`,
+      body: draft.summary || `Bản nháp AI · ${party} người · nhịp ${state.aiPace.toLowerCase()}.`,
       startDate: state.aiDate || null,
       endDate: addDays(state.aiDate, draft.days.length - 1),
       plan: budgetTotal,
@@ -198,17 +191,6 @@ export default function AIDesk() {
               {budgetPerPerson > 0 ? `Cả nhóm khoảng ${fmt(budgetTotal)}` : 'Dùng để quy ngân sách ra cả nhóm'}
             </span>
           </div>
-          <div className="field st-full">
-            <label>Đi cùng</label>
-            {/* Picking one fills in the number beside it; the number stays
-                editable, because a "Nhóm bạn" of six is still a nhóm bạn. */}
-            <Seg ariaLabel="Đi cùng ai" options={Object.keys(PARTY_SIZE).map((p) => ({
-              label: p,
-              active: state.aiParty === p,
-              onClick: () => patch({ aiParty: p, aiPartySize: PARTY_SIZE[p] }),
-              style: { padding: '7px 13px' },
-            }))} />
-          </div>
           <div className="field">
             <label>Nhịp độ</label>
             <Seg ariaLabel="Nhịp độ chuyến đi" options={['Thư thả', 'Cân bằng', 'Kín lịch'].map((p) => ({
@@ -258,7 +240,7 @@ export default function AIDesk() {
           <div className="st-metarow" style={{ marginBottom: 20 }}>
             <span className="tag tag-accent">Bản nháp 1</span>
             <span className="tag tag-neutral">{draft.title}</span>
-            <span className="tag tag-neutral">{draft.days.length} ngày · {state.aiParty} ({party} người)</span>
+            <span className="tag tag-neutral">{draft.days.length} ngày · {party} người</span>
             <span className="tag tag-accent-2">≈ {fmt(total / party)}/người</span>
           </div>
           <div className="st-aicard">

@@ -1,48 +1,100 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../store.jsx';
-import { dayLabel, fmt, newDay } from '../../data.js';
-import { aiAvailable, reviseDayPlan } from '../../backend/index.js';
-import { ArrowRight, Check, Compass, En, Plus, Seg } from '../../components/ui.jsx';
+import { dayLabel, fmt, newDay, uid } from '../../data.js';
+import { aiAvailable, askAssistant } from '../../backend/index.js';
+import { Check, En, Plus, Seg } from '../../components/ui.jsx';
 
-/* The assistant that works inside a trip, rather than the one that writes a
-   trip from nothing (screens/AIDesk.jsx).
+/* The assistant that lives inside a trip, as a conversation.
 
-   The whole design is one rule: it proposes, the person disposes. Nothing here
-   writes to the trip until somebody has read the answer and pressed a button.
-   A model that edits an itinerary in place is a model that quietly moves the
-   restaurant somebody already booked.
+   Two rules shape everything here.
 
-   One day per request, for the same reason. Handed a whole trip and told to
-   "add a coffee stop", a model reflows days nobody asked about, and there is
-   no way to see what moved. A single day is a change that fits on screen. */
+   It proposes, the person disposes. Nothing reaches the trip until somebody
+   reads a proposal and presses Áp dụng. A model that edits an itinerary in
+   place is a model that quietly moves the restaurant somebody already booked.
 
-const EXAMPLES = {
+   And it talks about one day at a time. Which day is picked with the chips
+   above the conversation, not inferred from the sentence — guessing wrong
+   there means writing over a day nobody was discussing, and no amount of
+   chat-like polish is worth that. Everything else is a conversation: follow-ups
+   work ("thêm một quán nữa"), questions get answers instead of a rewritten
+   day, and the thread stays on screen so you can see what you asked for. */
+
+const OPENERS = {
   edit: [
-    'Thêm một quán cà phê buổi chiều gần điểm dừng cuối',
+    'Thêm một quán cà phê buổi chiều',
     'Đổi bữa trưa sang món chay',
-    'Bỏ bớt một điểm, ngày này đang kín quá',
-    'Xếp lại cho đỡ phải đi vòng',
+    'Ngày này kín quá, bỏ bớt một điểm',
+    'Có gì hay gần điểm dừng cuối không?',
   ],
   add: [
     'Một ngày đi Bà Nà Hills, đi sớm về chiều',
-    'Ngày cuối nhẹ nhàng, gần khách sạn, tiện ra sân bay',
+    'Ngày cuối nhẹ nhàng, tiện ra sân bay',
     'Một ngày dành cho chợ và mua quà',
   ],
 };
 
-/* The wait shows the shape of the answer forming, the way the AI desk does. */
-function PlanSkeleton() {
+const msg = (role, text, extra = {}) => ({ id: uid('msg'), role, text, ...extra });
+
+/* Three dots while the model writes. The AI desk uses a skeleton because it
+   knows the shape of what is coming; a chat turn might be one sentence or a
+   whole day, so it gets the honest version instead. */
+function Typing() {
   return (
-    <div className="st-aicard" style={{ marginTop: 22 }} aria-live="polite" aria-busy="true">
-      <div className="st-aiday">
-        <span className="st-skel" style={{ display: 'block', width: '52%', height: 17, marginBottom: 15 }} />
-        {Array.from({ length: 4 }, (_, r) => (
-          <div key={r} className="st-aistop" style={{ marginBottom: 11 }}>
-            <span className="st-skel" style={{ width: 34, height: 11, flex: 'none' }} />
-            <span className="st-skel" style={{ width: `${56 + (r % 4) * 11}%`, height: 11 }} />
+    <div className="st-chat-row assistant">
+      <div className="st-chat-bubble assistant" aria-live="polite">
+        <span className="st-typing" aria-label="Trợ lý đang soạn câu trả lời">
+          <i /><i /><i />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PlanCard({ items, isNew, applied, onApply, onView, busy, mode }) {
+  const cost = items.reduce((s, i) => s + i.cost, 0);
+  return (
+    <div className="st-chat-plan">
+      <div className="st-metarow" style={{ marginBottom: 12 }}>
+        <span className="tag tag-neutral">{items.length} điểm dừng</span>
+        <span className="tag tag-accent-2">dự chi {fmt(cost)}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        {items.map((it) => (
+          <div key={it.id} className="st-aistop">
+            <span className="st-aistop-t">{it.time}</span>
+            <span className="st-aistop-n">
+              {it.name}
+              {isNew(it) && <span className="tag tag-accent" style={{ marginLeft: 8, fontSize: 11 }}>mới</span>}
+              {it.note && <span className="st-stop-note" style={{ display: 'block' }}>{it.note}</span>}
+            </span>
           </div>
         ))}
       </div>
+      {applied ? (
+        /* Applying does not navigate away: the thread is the point, and losing
+           it to change one day would make follow-ups impossible. The way over
+           is offered instead of taken. */
+        <p className="st-chat-applied">
+          <Check width="14" height="14" />Đã ghi vào chuyến đi
+          <button type="button" className="st-linkbtn" style={{ marginLeft: 6 }} onClick={onView}>
+            Xem trên lịch trình
+          </button>
+        </p>
+      ) : (
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" className="btn btn-primary" style={{ fontSize: 13 }} onClick={onApply} disabled={busy}>
+            {busy ? 'Đang ghi…' : (
+              <>
+                {mode === 'add' ? <Plus width="14" height="14" /> : <Check width="14" height="14" />}
+                {mode === 'add' ? 'Thêm ngày này' : 'Áp dụng cho ngày này'}
+              </>
+            )}
+          </button>
+          <span className="text-muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
+            {mode === 'add' ? 'Thêm vào cuối lịch trình' : 'Thay toàn bộ điểm dừng của ngày đang chọn'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -51,42 +103,54 @@ export default function AssistantTab({ trip }) {
   const { patch, notify, actions } = useApp();
   const [mode, setMode] = useState('edit');       // edit | add
   const [dayIdx, setDayIdx] = useState(0);
-  const [request, setRequest] = useState('');
-  const [phase, setPhase] = useState('form');     // form | loading | result
-  const [plan, setPlan] = useState(null);
-  const [error, setError] = useState('');
-  const [applying, setApplying] = useState(false);
+  const [thread, setThread] = useState([]);
+  const [draft, setDraft] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const [applyingId, setApplyingId] = useState(null);
+  const endRef = useRef(null);
 
   /* The day list can shrink under this tab the same way it can under the
      itinerary, so never index blindly. */
   const idx = Math.min(Math.max(dayIdx, 0), Math.max(trip.days.length - 1, 0));
   const day = trip.days[idx] ?? null;
-  const canEditDay = mode === 'edit' && !!day;
+  const showDayPicker = mode === 'edit' && trip.days.length > 0;
 
   const people = Math.max(1, trip.members.length);
   const budgetPerPerson = trip.plan > 0 ? Math.round(trip.plan / people) : 0;
 
-  /* Names already in the day, so the preview can point at what is actually
-     new. A diff somebody can read is what makes "Áp dụng" a real decision
-     rather than a leap of faith. */
-  const before = new Set((day?.items ?? []).map((s) => s.name.trim().toLowerCase()));
-  const isNew = (s) => mode === 'add' || !before.has(s.name.trim().toLowerCase());
+  /* Scroll the newest message into view. In an effect because it has to happen
+     after the browser has laid the message out, and it touches the DOM rather
+     than state, so it is not the cascading-render kind of effect. */
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }, [thread.length, thinking]);
 
-  const ask = async () => {
-    if (!request.trim()) {
-      setError('Viết một câu mô tả bạn muốn đổi gì giúp mình.');
-      return;
-    }
+  /* Switching day or mode starts a new conversation. Carrying the thread over
+     would leave "thêm một quán nữa" pointing at a day that is no longer the
+     one being written to. */
+  const retarget = (next) => {
+    next();
+    setThread([]);
+    setDraft('');
+  };
+
+  const send = async (text) => {
+    const asked = String(text ?? '').trim();
+    if (!asked || thinking) return;
     if (mode === 'edit' && !day) {
-      setError('Chuyến đi chưa có ngày nào để sửa. Chuyển sang "Thêm ngày mới" giúp mình.');
+      setThread((t) => [...t, msg('assistant', 'Chuyến đi chưa có ngày nào để sửa. Chuyển sang "Thêm ngày mới" giúp mình.', { error: true })]);
       return;
     }
 
-    setPhase('loading');
-    setError('');
-    setPlan(null);
+    /* The history sent is the thread as it was *before* this message, which is
+       exactly what the model needs: the new message is passed separately. */
+    const history = thread.filter((m) => !m.error).map((m) => ({ role: m.role, text: m.text }));
+    setThread((t) => [...t, msg('user', asked)]);
+    setDraft('');
+    setThinking(true);
+
     try {
-      const answer = await reviseDayPlan({
+      const answer = await askAssistant({
         mode,
         dest: trip.title,
         dayPlace: day?.place ?? '',
@@ -94,172 +158,152 @@ export default function AssistantTab({ trip }) {
         /* Editing sends the day being changed; adding sends every day already
            planned, so the new one does not repeat what is there. */
         stops: mode === 'add' ? trip.days.flatMap((d) => d.items) : (day?.items ?? []),
-        request,
+        request: asked,
+        history,
         partySize: people,
         pace: 'Cân bằng',
         budgetPerPerson,
       });
-      setPlan(answer);
-      setPhase('result');
+      setThread((t) => [...t, msg('assistant', answer.reply, {
+        plan: answer.items.length ? { place: answer.place, items: answer.items } : null,
+        /* The day as it stood when this proposal was made, so the "mới" badges
+           keep telling the truth after something else has been applied. */
+        before: new Set((day?.items ?? []).map((s) => s.name.trim().toLowerCase())),
+        mode,
+        dayIdx: idx,
+      })]);
     } catch (err) {
       console.error('SmartTrip · trợ lý trong chuyến:', err);
-      setPhase('form');
-      setError(err?.message || 'Trợ lý chưa trả lời được. Thử lại giúp mình.');
+      setThread((t) => [...t, msg('assistant', err?.message || 'Trợ lý chưa trả lời được. Thử lại giúp mình.', { error: true })]);
+    } finally {
+      setThinking(false);
     }
   };
 
-  const apply = async () => {
-    if (applying) return;
-    setApplying(true);
-    if (mode === 'add') {
-      await actions.addDay(newDay({ place: plan.place, items: plan.items }));
+  const apply = async (m) => {
+    if (applyingId) return;
+    setApplyingId(m.id);
+    if (m.mode === 'add') {
+      /* Read before the write: the day lands at the end, and `trip` here is
+         still the version without it. */
+      const landsAt = trip.days.length;
+      await actions.addDay(newDay({ place: m.plan.place, items: m.plan.items }));
       notify('Đã thêm ngày mới vào lịch trình', 'sage');
-      patch({ tripTab: 'itin', day: trip.days.length, focusIdx: -1 });
-    } else {
-      await actions.updateDay(day.id, { items: plan.items, place: plan.place || day.place });
-      notify(`Đã cập nhật ${plan.place || `ngày ${idx + 1}`}`, 'sage');
-      patch({ tripTab: 'itin', day: idx, focusIdx: -1 });
+      setThread((t) => t.map((x) => (x.id === m.id ? { ...x, applied: true, viewIdx: landsAt } : x)));
+      setApplyingId(null);
+      return;
     }
-    setApplying(false);
-    setPlan(null);
-    setPhase('form');
-    setRequest('');
+
+    /* The proposal names the day it was made for. Between then and now the day
+       can be gone — somebody else deleting it while this tab sat open — and
+       writing to whatever is at that index instead would edit the wrong day. */
+    const target = trip.days[m.dayIdx];
+    if (!target) {
+      setThread((t) => [...t, msg('assistant', 'Ngày đó không còn trong chuyến đi nữa — có thể ai đó vừa xoá nó.', { error: true })]);
+      setApplyingId(null);
+      return;
+    }
+    await actions.updateDay(target.id, { items: m.plan.items, place: m.plan.place || target.place });
+    notify(`Đã cập nhật ${m.plan.place || `ngày ${m.dayIdx + 1}`}`, 'sage');
+    setThread((t) => t.map((x) => (x.id === m.id ? { ...x, applied: true, viewIdx: m.dayIdx } : x)));
+    setApplyingId(null);
   };
 
-  const cost = plan ? plan.items.reduce((s, i) => s + i.cost, 0) : 0;
+  const view = (m) => patch({ tripTab: 'itin', day: m.viewIdx ?? 0, focusIdx: -1 });
+
+  const onKeyDown = (e) => {
+    // Enter sends, Shift+Enter is a new line — the way every chat box works
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send(draft);
+    }
+  };
 
   return (
-    <section className="st-page-narrow" style={{ padding: 0, maxWidth: '74ch' }}>
-      <p className="st-lede" style={{ margin: '4px 0 0' }}>
-        Nói bằng lời của bạn muốn đổi gì trong lịch trình. Trợ lý soạn lại đúng một ngày và
-        đưa bạn xem trước — không có gì được ghi vào chuyến đi cho tới khi bạn bấm áp dụng.
-      </p>
-      {!aiAvailable && (
-        <p className="st-hint" style={{ marginTop: 16, display: 'inline-flex' }}>
-          Chưa nối Firebase AI Logic — đang trả bản mẫu. Xem README để bật Gemini.
-        </p>
-      )}
-
-      <div className="field" style={{ marginTop: 22 }}>
-        <label>Bạn muốn làm gì?</label>
+    <section className="st-chat">
+      <div className="st-chat-head">
         <Seg ariaLabel="Việc muốn trợ lý làm" options={[
-          { label: 'Sửa một ngày', active: mode === 'edit', onClick: () => { setMode('edit'); setPlan(null); setPhase('form'); } },
-          { label: 'Thêm ngày mới', active: mode === 'add', onClick: () => { setMode('add'); setPlan(null); setPhase('form'); } },
+          { label: 'Sửa một ngày', active: mode === 'edit', onClick: () => retarget(() => setMode('edit')) },
+          { label: 'Thêm ngày mới', active: mode === 'add', onClick: () => retarget(() => setMode('add')) },
         ]} />
-      </div>
-
-      {canEditDay && trip.days.length > 0 && (
-        <div className="field" style={{ marginTop: 16 }}>
-          <label>Ngày nào?</label>
-          <Seg ariaLabel="Chọn ngày để sửa" options={trip.days.map((d, i) => ({
+        {showDayPicker && (
+          <Seg ariaLabel="Chọn ngày để nói tới" options={trip.days.map((d, i) => ({
             key: d.id,
             label: `Ngày ${i + 1}`,
             active: i === idx,
-            onClick: () => { setDayIdx(i); setPlan(null); setPhase('form'); },
+            onClick: () => retarget(() => setDayIdx(i)),
           }))} />
-          <span className="text-muted" style={{ fontSize: 12.5, fontWeight: 600, marginTop: 8, display: 'block' }}>
-            {dayLabel(trip.startDate, idx)} · {day.place || `Ngày ${idx + 1}`} · {day.items.length} điểm dừng
-          </span>
-        </div>
-      )}
-
-      <div className="field" style={{ marginTop: 16 }}>
-        <label htmlFor="assist-req">
-          {mode === 'add' ? 'Ngày mới nên có gì?' : 'Đổi gì cho ngày này?'}
-          <En> · Ask in your own words</En>
-        </label>
-        <textarea className="input" id="assist-req" rows={3} value={request}
-          placeholder={EXAMPLES[mode][0]}
-          onChange={(e) => setRequest(e.target.value)} />
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-          {EXAMPLES[mode].map((ex) => (
-            <button key={ex} type="button" className="st-chip" onClick={() => setRequest(ex)}>
-              {ex}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 18, flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-primary" onClick={ask} disabled={phase === 'loading'}>
-          <Compass width="15" height="15" />
-          {phase === 'loading' ? 'Trợ lý đang soạn…' : 'Nhờ trợ lý'}
-        </button>
-        <span className="text-muted" style={{ fontSize: 13.5, fontWeight: 600 }}>
-          Xem trước rồi mới áp dụng
+        )}
+        <span className="st-chat-context">
+          {mode === 'add'
+            ? `Ngày mới sẽ là ngày ${trip.days.length + 1} của chuyến`
+            : day && `${dayLabel(trip.startDate, idx)} · ${day.place || `Ngày ${idx + 1}`} · ${day.items.length} điểm dừng`}
         </span>
       </div>
 
-      {error && <p className="st-error">{error}</p>}
-
-      {phase === 'loading' && <PlanSkeleton />}
-
-      {phase === 'result' && plan && (
-        <div style={{ marginTop: 26 }} className="st-rise">
-          <div className="st-metarow" style={{ marginBottom: 16 }}>
-            <span className="tag tag-accent">{mode === 'add' ? 'Ngày mới đề xuất' : 'Bản sửa đề xuất'}</span>
-            {plan.place && <span className="tag tag-neutral">{plan.place}</span>}
-            <span className="tag tag-neutral">{plan.items.length} điểm dừng</span>
-            <span className="tag tag-accent-2">dự chi {fmt(cost)}</span>
-          </div>
-
-          <div className="st-aicard">
-            <div className="st-aiday">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                {plan.items.map((it) => (
-                  <div key={it.id} className="st-aistop">
-                    <span className="st-aistop-t">{it.time}</span>
-                    <span className="st-aistop-n">
-                      {it.name}
-                      {isNew(it) && (
-                        <span className="tag tag-accent" style={{ marginLeft: 8, fontSize: 11 }}>mới</span>
-                      )}
-                      {it.note && (
-                        <span className="st-stop-note" style={{ display: 'block' }}>{it.note}</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </div>
+      <div className="st-chat-log">
+        {thread.length === 0 && (
+          <div className="st-chat-empty">
+            <p>
+              Nhắn cho trợ lý như nhắn cho một người bạn rành đường.
+              Nó chỉ động vào <b>{mode === 'add' ? 'một ngày mới' : `ngày ${idx + 1}`}</b>, và
+              không ghi gì vào chuyến đi cho tới khi bạn bấm áp dụng.
+              <En> · It proposes, you decide.</En>
+            </p>
+            {!aiAvailable && (
+              <p className="st-hint" style={{ display: 'inline-flex' }}>
+                Chưa nối Firebase AI Logic — đang trả bản mẫu. Xem README để bật Gemini.
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+              {OPENERS[mode].map((o) => (
+                <button key={o} type="button" className="st-chip" onClick={() => send(o)}>{o}</button>
+              ))}
             </div>
           </div>
+        )}
 
-          {plan.summary && (
-            <p className="text-muted" style={{ fontSize: 13.5, margin: '18px 0 0', maxWidth: '68ch' }}>
-              {plan.summary}
-            </p>
-          )}
-          <p className="st-fineprint" style={{ maxWidth: '68ch' }}>
-            {mode === 'add'
-              ? 'Ngày này sẽ được thêm vào cuối lịch trình.'
-              : 'Áp dụng sẽ thay toàn bộ điểm dừng của ngày đang chọn. Nút Hoàn tác trong tab Lịch trình '
-                + 'không giữ được thay đổi này, nên đọc kỹ danh sách trên trước khi bấm.'}
-            {' '}Giá và toạ độ do mô hình ước tính — kiểm tra lại trước khi đặt chỗ.
-          </p>
-
-          <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-primary" onClick={apply} disabled={applying}>
-              {applying ? 'Đang ghi vào chuyến đi…' : (
-                <>
-                  {mode === 'add' ? <Plus width="15" height="15" /> : <Check width="15" height="15" />}
-                  {mode === 'add' ? 'Thêm ngày này' : 'Áp dụng cho ngày này'}
-                </>
+        {thread.map((m) => (
+          <div key={m.id} className={`st-chat-row ${m.role}`}>
+            <div className={`st-chat-bubble ${m.role}${m.error ? ' error' : ''}`}>
+              <p style={{ margin: 0 }}>{m.text}</p>
+              {m.plan && (
+                <PlanCard
+                  items={m.plan.items}
+                  mode={m.mode}
+                  applied={!!m.applied}
+                  busy={applyingId === m.id}
+                  isNew={(s) => m.mode === 'add' || !m.before.has(s.name.trim().toLowerCase())}
+                  onApply={() => apply(m)}
+                  onView={() => view(m)}
+                />
               )}
-            </button>
-            <button type="button" className="btn btn-secondary" disabled={applying} onClick={ask}>
-              Soạn lại
-            </button>
-            <button type="button" className="btn btn-ghost" disabled={applying}
-              onClick={() => { setPlan(null); setPhase('form'); }}>
-              Bỏ bản này
-            </button>
+            </div>
           </div>
-          <div style={{ marginTop: 14 }}>
-            <button type="button" className="st-linkbtn"
-              onClick={() => patch({ tripTab: 'itin', day: mode === 'add' ? idx : idx, focusIdx: -1 })}>
-              Xem lịch trình hiện tại<ArrowRight width="13" height="13" style={{ marginLeft: 4 }} />
-            </button>
-          </div>
+        ))}
+
+        {thinking && <Typing />}
+        <div ref={endRef} />
+      </div>
+
+      <div className="st-chat-compose">
+        <textarea
+          className="input" rows={2} value={draft} disabled={thinking}
+          aria-label="Nhắn cho trợ lý"
+          placeholder={thinking ? 'Trợ lý đang soạn…' : `${OPENERS[mode][0]}  (Enter để gửi)`}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown} />
+        <button type="button" className="btn btn-primary" disabled={thinking || !draft.trim()}
+          onClick={() => send(draft)}>
+          Gửi
+        </button>
+      </div>
+      {thread.length > 0 && (
+        <div className="st-chat-foot">
+          <button type="button" className="st-linkbtn" onClick={() => setThread([])}>Xoá cuộc trò chuyện</button>
+          <span className="text-muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
+            Giá và toạ độ do mô hình ước tính — kiểm tra lại trước khi đặt chỗ.
+          </span>
         </div>
       )}
     </section>

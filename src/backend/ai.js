@@ -208,10 +208,19 @@ export async function generateItinerary(input) {
    person applying it cannot see what moved. One day is a change somebody can
    read before they accept it. */
 
-const dayPlanSchema = (Schema) => Schema.object({
+/* `reply` is always written; `stops` only when the answer is a proposed change.
+
+   That split is what makes this a conversation rather than a form with one
+   field. "Quán nào ngon gần Cầu Rồng?" deserves an answer, not a rewritten
+   day, and a schema that always demands stops would have produced one. Empty
+   stops is the signal for "I talked, I did not propose" — no separate boolean,
+   because a boolean is one more thing the model can contradict itself about. */
+const assistantSchema = (Schema) => Schema.object({
   properties: {
-    place: Schema.string({ description: 'Khu vực chính của ngày, ví dụ "Hội An"' }),
-    summary: Schema.string({ description: 'Một câu nói rõ đã đổi những gì so với ngày cũ, tiếng Việt' }),
+    reply: Schema.string({
+      description: 'Câu trả lời cho người dùng, tiếng Việt, 1–3 câu, giọng thân thiện như đang nhắn tin',
+    }),
+    place: Schema.string({ description: 'Khu vực chính của ngày sau khi sửa; để trống nếu không đề xuất gì' }),
     stops: Schema.array({ items: stopSchema(Schema) }),
   },
 });
@@ -221,97 +230,134 @@ const describeStops = (stops) => (stops.length
     + `${s.cost ? ` · ${s.cost} VND` : ''}`).join('\n')
   : '(ngày này chưa có điểm dừng nào)');
 
-function revisePrompt({ mode, dest, dayPlace, dayLabel, stops, request, partySize, pace, budgetPerPerson }) {
+/* Only the last few turns. The whole conversation would grow without bound in
+   a tab somebody leaves open, and the model does not need message four to
+   answer message twelve — the day itself is sent in full every time, so the
+   history is only there for "thêm một quán nữa" to know what "nữa" refers to. */
+const HISTORY_TURNS = 6;
+
+const historyLines = (history) => (Array.isArray(history) ? history : [])
+  .slice(-HISTORY_TURNS)
+  .map((m) => `${m.role === 'user' ? 'Người dùng' : 'Trợ lý'}: ${m.text}`)
+  .join('\n');
+
+function assistantPrompt({
+  mode, dest, dayPlace, dayLabel, stops, request, history, partySize, pace, budgetPerPerson,
+}) {
+  const past = historyLines(history);
   const head = mode === 'add'
     ? [
-      `Soạn thêm MỘT ngày mới cho chuyến đi tới ${dest}.`,
+      `Bạn đang giúp soạn thêm MỘT ngày mới cho chuyến đi tới ${dest}.`,
       `Ngày này sẽ là ${dayLabel}.`,
       '',
       'Những ngày đã có trong chuyến, để không lặp lại điểm dừng:',
       stops,
     ]
     : [
-      `Sửa lại MỘT ngày trong lịch trình chuyến đi tới ${dest}.`,
-      `Ngày đang sửa: ${dayPlace || dayLabel}.`,
+      `Bạn đang giúp sửa MỘT ngày trong lịch trình chuyến đi tới ${dest}.`,
+      `Ngày đang nói tới: ${dayPlace || dayLabel}.`,
       '',
       'Các điểm dừng hiện tại của ngày đó:',
       stops,
     ];
 
   return [
-    ...head,
+    'Bạn là trợ lý lên lịch trình của SmartTrip, đang trò chuyện với người dùng.',
     '',
-    `Yêu cầu của người dùng: "${request}"`,
+    ...head,
     '',
     `Nhóm ${partySize} người, nhịp độ ${pace}.`,
     budgetPerPerson > 0
       ? `Ngân sách khoảng ${budgetPerPerson.toLocaleString('vi-VN')} ₫ mỗi người cho cả chuyến.`
       : 'Không có ràng buộc ngân sách cụ thể.',
+    ...(past ? ['', 'Cuộc trò chuyện tới lúc này:', past] : []),
     '',
-    'Yêu cầu về câu trả lời:',
-    '- Trả về TOÀN BỘ danh sách điểm dừng của ngày đó sau khi sửa, không phải chỉ phần thêm.',
+    `Người dùng vừa nói: "${request}"`,
+    '',
+    'Cách trả lời:',
+    '- `reply` luôn phải có: nói chuyện bình thường, 1–3 câu tiếng Việt.',
+    '- Nếu người dùng chỉ hỏi thông tin, hỏi lại cho rõ, hoặc chào hỏi thì để `stops` RỖNG.',
+    '- Chỉ điền `stops` khi bạn thật sự đề xuất sửa lịch trình của ngày đó.',
+    '- Khi có đề xuất, `stops` phải là TOÀN BỘ danh sách của ngày sau khi sửa, không phải phần thêm.',
     mode === 'add'
-      ? '- 3 đến 5 điểm dừng cho ngày mới.'
+      ? '- Ngày mới nên có 3 đến 5 điểm dừng.'
       : '- Giữ nguyên những điểm dừng người dùng không đụng tới, kể cả giờ và ghi chú của chúng.',
     '- Chỉ dùng địa điểm có thật, kèm toạ độ lat/lng thật của địa điểm đó.',
     '- Giờ trong ngày phải tăng dần và hợp lý với giờ mở cửa, bữa ăn đúng buổi.',
     '- cost là chi phí cho cả nhóm bằng VND, dùng 0 nếu miễn phí.',
-    '- summary nói rõ bạn vừa đổi gì, để người dùng đọc là biết có nên áp dụng không.',
+    '- Khi có đề xuất, `reply` nói rõ bạn vừa đổi gì, để người dùng đọc là biết có nên áp dụng không.',
     '- Toàn bộ chữ viết bằng tiếng Việt.',
   ].join('\n');
 }
 
-/** Demo-mode answer: honest about being a sample, still the right shape. */
-function mockDayPlan({ mode, dayPlace, stops }) {
+/* Demo-mode answer. It replies like the real thing but only proposes a change
+   when the message sounds like one — otherwise the sample would rewrite the
+   day in response to "chào bạn". */
+const WANTS_CHANGE = /thêm|đổi|bỏ|xoá|xếp|sửa|thay|chuyển|ngày mới|gợi ý|đề xuất/i;
+
+function mockAnswer({ mode, dayPlace, stops, request }) {
+  if (mode !== 'add' && !WANTS_CHANGE.test(request)) {
+    return {
+      reply: 'Chế độ thử chưa nối Firebase AI Logic nên mình chưa hỏi được mô hình thật. '
+        + 'Thử nhắn kiểu "thêm một quán cà phê buổi chiều" để xem trợ lý đề xuất trông thế nào.',
+      place: '',
+      items: [],
+    };
+  }
   const kept = stops.slice(0, 3).map((s) => newStop({ ...s, id: uid('stop') }));
-  const extra = newStop({
-    time: '16:30',
-    name: 'Điểm dừng do trợ lý đề xuất',
-    note: 'Chế độ thử chưa gọi Gemini — đây là bản dựng sẵn để xem bố cục.',
-    cost: 0,
-  });
   return {
+    reply: 'Đây là bản mẫu ở chế độ thử — mình giữ lại mấy điểm đầu và thêm một điểm để bạn xem bố cục.',
     place: mode === 'add' ? 'Ngày mới (bản mẫu)' : (dayPlace || 'Ngày đã sửa'),
-    summary: 'Bản mẫu ở chế độ thử — chưa nối Firebase AI Logic nên chưa hỏi được mô hình.',
-    items: [...kept, extra],
+    items: [...kept, newStop({
+      time: '16:30',
+      name: 'Điểm dừng do trợ lý đề xuất',
+      note: 'Chế độ thử chưa gọi Gemini — đây là bản dựng sẵn để xem bố cục.',
+      cost: 0,
+    })],
   };
 }
 
 /**
- * Rewrite one day, or write a new one, from a request in the person's own
- * words. Returns `{ place, summary, items }` already sanitised — the caller
- * shows it for approval and only then writes it to the trip.
+ * One turn of the conversation about a day.
  *
- * `mode` is 'edit' (rewrite `stops`) or 'add' (a new day; `stops` is then the
- * rest of the trip, passed in so the model does not repeat itself).
+ * Returns `{ reply, place, items }`. `reply` is what the assistant says and is
+ * always there; `items` is empty unless it is proposing a change, and an empty
+ * `items` is not a failure — it is the assistant answering a question. The
+ * caller shows the reply either way and only offers "Áp dụng" when there is
+ * something to apply.
+ *
+ * `mode` is 'edit' (talking about `stops`, one existing day) or 'add' (a new
+ * day; `stops` is then the rest of the trip, so the answer does not repeat it).
+ * `history` is the turns so far, so "thêm một quán nữa" knows what "nữa" means.
  */
-export async function reviseDayPlan({
-  mode = 'edit', dest, dayPlace, dayLabel, stops = [], request,
+export async function askAssistant({
+  mode = 'edit', dest, dayPlace, dayLabel, stops = [], request, history = [],
   partySize = 1, pace = 'Cân bằng', budgetPerPerson = 0,
 }) {
   const asked = String(request ?? '').trim();
-  if (!asked) throw new Error('Chưa biết bạn muốn đổi gì. Viết một câu mô tả giúp mình.');
+  if (!asked) throw new Error('Chưa có gì để nhắn. Viết một câu giúp mình.');
 
   if (!firebaseEnabled) {
-    await new Promise((r) => setTimeout(r, 800));   // keep the skeleton visible
-    return mockDayPlan({ mode, dayPlace, stops });
+    await new Promise((r) => setTimeout(r, 800));   // keep the typing indicator visible
+    return mockAnswer({ mode, dayPlace, stops, request: asked });
   }
 
   const parsed = await askModel({
-    schema: dayPlanSchema,
-    prompt: revisePrompt({
+    schema: assistantSchema,
+    prompt: assistantPrompt({
       mode,
       dest,
       dayPlace,
       dayLabel,
       stops: describeStops(stops),
       request: asked,
+      history,
       partySize,
       pace,
       budgetPerPerson,
     }),
     temperature: 0.7,               // between the guidebook's facts and a fresh plan
-    whenUnreadable: 'Trợ lý trả về dữ liệu không đọc được. Thử viết lại yêu cầu giúp mình.',
+    whenUnreadable: 'Trợ lý trả về dữ liệu không đọc được. Thử nhắn lại giúp mình.',
   });
 
   const items = (Array.isArray(parsed?.stops) ? parsed.stops : [])
@@ -319,11 +365,15 @@ export async function reviseDayPlan({
     .filter(Boolean)
     .map((s) => newStop(s));
 
-  if (!items.length) throw new Error('Trợ lý chưa đề xuất được điểm dừng nào. Thử viết yêu cầu cụ thể hơn.');
+  const reply = typeof parsed?.reply === 'string' && parsed.reply.trim()
+    ? parsed.reply.trim()
+    /* A proposal with no words is still usable; silence with no proposal is
+       not, so that one case gets a sentence written here. */
+    : (items.length ? 'Mình đề xuất lịch trình dưới đây.' : 'Mình chưa rõ ý bạn lắm, nói cụ thể hơn được không?');
 
   return {
-    place: typeof parsed?.place === 'string' && parsed.place.trim() ? parsed.place.trim() : (dayPlace || ''),
-    summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
+    reply,
+    place: typeof parsed?.place === 'string' ? parsed.place.trim() : '',
     items,
   };
 }

@@ -81,9 +81,10 @@ const defaultState = {
   aiDate: '2026-09-12',
   aiEndDate: '2026-09-15',
   aiBudget: '4.000.000 ₫',
-  aiParty: 'Nhóm bạn',
-  /* Typed, not derived from aiParty. "Nhóm bạn" was silently four people, and
-     the budget for the whole group was computed from that guess. */
+  /* One number, typed. There used to be an "Đi cùng" chip row beside it —
+     "Nhóm bạn" was silently four people and the budget for the whole group was
+     computed from that guess. Once the count became a field of its own, the
+     chips were a second answer to a question that already had one. */
   aiPartySize: 4,
   aiPace: 'Cân bằng',
   aiStyles: { 'Ẩm thực': true, 'Biển đảo': true },

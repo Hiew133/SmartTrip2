@@ -167,7 +167,7 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days`, `expenses` và `guide` |
 | Liên kết chia sẻ `/t/{id}` | ✅ mở đúng chuyến, giữ được qua bước đăng nhập |
 | Cẩm nang bản địa | ✅ một tab trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
-| Trợ lý trong chuyến đi | ✅ tab riêng — sửa một ngày hoặc thêm ngày mới, xem trước rồi mới ghi |
+| Trợ lý trong chuyến đi | ✅ tab riêng, dạng trò chuyện — hỏi được, đề xuất một ngày, xem trước rồi mới ghi |
 | Sổ tay dịch | ✅ màn `Dịch` trên nav, cache trong máy nên mở lại không tốn lượt gọi AI |
 
 > **`.env.local` không có trong git.** Máy nào chưa có thì app chạy **chế độ thử**:
@@ -610,25 +610,42 @@ rồi cập nhật lại dòng này.
 sửa một chuyến đã có. Cùng gọi `askModel`, nhưng đừng gộp lại: cái sau phải nhét lịch
 trình hiện tại vào prompt và **trả về đúng một ngày**, cái trước thì không có gì để nhét.
 
-### Trợ lý trong chuyến: đề xuất, không tự ghi
+### Trợ lý trong chuyến là một cuộc trò chuyện, nhưng mục tiêu ghi thì không
 
-Không có đường nào từ câu trả lời của model thẳng vào Firestore. `reviseDayPlan` trả về
-`{ place, summary, items }` đã làm sạch, component hiện ra cho người đọc, và chỉ nút *Áp
-dụng* mới gọi `updateDay` / `addDay`. Một model sửa lịch trình tại chỗ là một model lặng
-lẽ dời cái nhà hàng người ta đã đặt bàn.
+`AssistantTab` là chat thật: bong bóng hai bên, Enter để gửi, lịch sử ở lại trên màn hình,
+và `askAssistant` nhận `history` nên "thêm một quán nữa" biết "nữa" là gì.
 
-**Một ngày mỗi lần, có chủ ý.** Đưa cả chuyến rồi bảo "thêm một quán cà phê" thì model sẽ
-xếp lại cả những ngày không ai hỏi tới, mà người bấm nút không thấy được cái gì vừa đổi.
-Một ngày là thay đổi vừa một màn hình, đọc hết được trước khi đồng ý.
+Nhưng **ngày bị ghi vào là do chip chọn, không phải do câu chữ**. Đoán sai ý định trong một
+câu tiếng Việt nghĩa là ghi đè lên một ngày không ai đang nói tới, và không có mức "giống
+chat" nào đáng đổi lấy chuyện đó. Đổi ngày hay đổi chế độ thì **xoá luôn thread** — giữ lại
+sẽ khiến "thêm một quán nữa" trỏ vào một ngày không còn là ngày sắp bị ghi.
 
-**Nhãn "mới" là một cái diff.** `AssistantTab` so tên điểm dừng trả về với tên đang có
-trong ngày; cái nào chưa từng có thì đánh dấu. Không có nó thì "Áp dụng" là một cú nhảy
-vào bóng tối, vì bản trả về là **toàn bộ** danh sách chứ không phải phần thêm.
+**`reply` luôn có, `stops` thì không.** Đó là thứ biến cái này từ một cái form một ô thành
+một cuộc trò chuyện: "quán nào ngon gần Cầu Rồng?" đáng được trả lời chứ không đáng bị
+viết lại cả ngày, mà một schema lúc nào cũng đòi `stops` thì sẽ viết lại thật. `stops` rỗng
+là tín hiệu "tôi nói, tôi không đề xuất" — không có cờ boolean riêng, vì cờ là thêm một thứ
+nữa để model tự mâu thuẫn với chính nó.
 
-Hai chi tiết đi kèm:
+**Đề xuất, không tự ghi.** Không có đường nào từ câu trả lời của model thẳng vào Firestore;
+chỉ nút *Áp dụng* mới gọi `updateDay` / `addDay`. Một model sửa lịch trình tại chỗ là một
+model lặng lẽ dời cái nhà hàng người ta đã đặt bàn. Áp dụng xong **không điều hướng đi đâu
+cả** — thread là thứ đang có giá trị, mất nó để đổi một ngày là hỏng cả cuộc trò chuyện;
+chỉ có một liên kết mời sang xem.
+
+**Một ngày mỗi lần, có chủ ý.** Đưa cả chuyến rồi bảo "thêm một quán cà phê" thì model xếp
+lại cả những ngày không ai hỏi tới, mà người bấm nút không thấy được cái gì vừa đổi.
+
+**Nhãn "mới" là một cái diff**, và nó chụp lại ngày **tại thời điểm đề xuất** (`before` lưu
+trong chính message). Nếu đọc ngày hiện tại thì sau khi áp dụng một đề xuất khác, các nhãn
+cũ trong thread sẽ nói dối. Không có nó thì "Áp dụng" là một cú nhảy vào bóng tối, vì bản
+trả về là **toàn bộ** danh sách chứ không phải phần thêm.
+
+Ba chi tiết đi kèm:
 
 - **Chế độ `add` gửi cả chuyến đi vào prompt**, không phải để sửa nó mà để ngày mới không
   lặp lại điểm dừng đã có. Chế độ `edit` chỉ gửi đúng ngày đang sửa.
+- **Áp dụng tra lại ngày theo `id`, không theo chỉ số.** Giữa lúc đề xuất và lúc bấm, ngày
+  đó có thể đã bị người khác xoá; ghi vào "thứ đang nằm ở chỉ số đó" là sửa nhầm ngày.
 - **Tab này chỉ hiện với người có quyền sửa.** Mọi thứ nó làm đều kết thúc bằng một lần
   ghi, nên với người chỉ xem thì đó là một màn hình toàn nút sẽ báo lỗi. `tripTab` được
   nhớ giữa các chuyến, nên `Trip.jsx` phải rơi về `itin` khi tab đang nhớ không còn tồn
@@ -645,9 +662,9 @@ chuyến đi ngay sau đó.
 model thôi viết lịch trình và bắt đầu viết brochure. Muốn dài hơn thì thêm ngày bằng trợ
 lý trong chuyến.
 
-Số người là **ô nhập**, không suy ra từ chip "Đi cùng" nữa. Chip chỉ điền sẵn con số, gõ
-đè lên lúc nào cũng được — "Nhóm bạn" không phải lúc nào cũng bốn người, mà ngân sách cả
-nhóm tính từ đúng con số đó.
+Số người là **ô nhập**, và hàng chip "Đi cùng" đã bị bỏ hẳn. Trước đây "Nhóm bạn" âm thầm
+là bốn người và ngân sách cả nhóm tính từ con số đoán đó; khi số người đã thành một trường
+riêng thì hàng chip là câu trả lời thứ hai cho một câu hỏi đã có câu trả lời rồi.
 
 Chip **"Khác…"** không nằm trong `STYLE_CHIPS`, để nó không bao giờ bị gửi đi như một
 phong cách. Bật nó mới hiện ô chữ, và bật mà bỏ trống thì form chặn lại trước khi tốn một

@@ -93,12 +93,13 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
   của bạn tự cập nhật, không cần tải lại.
 - **Trợ lý AI thật** bằng Firebase AI Logic (Gemini) với structured output, tạo được chuyến đi
   mới thẳng từ bản nháp. Form hỏi **ngày khởi hành và ngày kết thúc** rồi tự suy ra số ngày,
-  **số người gõ tay** (chip "Cặp đôi", "Nhóm bạn"… chỉ là lối tắt điền sẵn con số), và phong
-  cách có ô **"Khác"** để tự viết thứ bạn quan tâm.
-- **Trợ lý ngay trong chuyến đi** — tab thứ hai của mỗi chuyến. Nói bằng lời thường
-  ("thêm quán cà phê buổi chiều", "đổi bữa trưa sang món chay", "một ngày đi Bà Nà"), trợ lý
-  soạn lại **đúng một ngày** rồi đưa xem trước, đánh dấu **mới** vào những điểm dừng chưa có.
-  Không gì được ghi vào chuyến đi cho tới khi bạn bấm áp dụng.
+  **số người gõ tay**, và phong cách có ô **"Khác"** để tự viết thứ bạn quan tâm.
+- **Trợ lý ngay trong chuyến đi** — tab thứ hai của mỗi chuyến, và nó là một **cuộc trò
+  chuyện**: nhắn như nhắn cho một người bạn rành đường, hỏi lại được, nói tiếp được
+  ("thêm một quán nữa" hiểu "nữa" là gì). Hỏi thông tin thì nó trả lời; muốn đổi lịch trình
+  thì nó kèm theo một đề xuất cho **đúng một ngày**, đánh dấu **mới** vào những điểm dừng
+  chưa có. Không gì được ghi vào chuyến đi cho tới khi bạn bấm áp dụng, và bấm xong vẫn ở
+  lại trong cuộc trò chuyện để nói tiếp.
 - Mọi thứ đọc từ backend đều đi qua bộ kiểm tra shape, nên dữ liệu hỏng không làm sập app;
   khi chưa nối Firebase thì dùng localStorage (`smarttrip-v2`).
 

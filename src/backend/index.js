@@ -11,7 +11,7 @@ export {
   subscribeAuth, signInWithGoogle, signInWithEmail, signUpWithEmail, signOutUser,
   authMessage, resendVerification, refreshUser, verifyDemoEmail,
 } from './auth.js';
-export { generateItinerary, generateGuide, reviseDayPlan, translateText, aiAvailable } from './ai.js';
+export { generateItinerary, generateGuide, askAssistant, translateText, aiAvailable } from './ai.js';
 /* The device's own store, not a repository: it has one implementation and it
    is the same one in demo mode and in production. See backend/offline.js. */
 export { readPhrases, savePhrase, forgetPhrases } from './offline.js';
