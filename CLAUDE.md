@@ -628,9 +628,11 @@ Ba cái bẫy đã dẫm phải khi dựng:
 - **`isolation: isolate` cho `.st-mapwrap`.** Leaflet dùng z-index tới 700 cho pane và 1000
   cho control, trong bất kỳ stacking context nào nó gặp — và nó đã vẽ đè lên panel trợ lý
   dán trên bản đồ. Nhốt thang z-index của Leaflet lại trong bản đồ, đừng đi đua z-index.
-- **Panel neo vào bản đồ, không neo vào `figure`.** `.st-mapfig` có cả dòng ghi nguồn, nên
-  `bottom: 12px` tính theo nó là tràn xuống dưới bản đồ. Có `.st-mapstage` bọc riêng phần
-  bản đồ để làm mốc.
+- **Panel trợ lý ghim vào cửa sổ, không vào bản đồ.** Bản đầu nó `position: absolute`
+  trong khung bản đồ, nên nó thừa hưởng bề rộng của cột bản đồ — một cuộc trò chuyện bị
+  bóp vào chỗ hẹp hơn chính những tin nhắn trong nó. Giờ `position: fixed` ở góc phải-dưới,
+  rộng `min(430px, 100vw - 48px)`, và màn hẹp thì trải ngang thành một tấm dưới đáy.
+  Nó cũng đứng yên khi lịch trình bên cạnh cuộn.
 
 ## Hai trợ lý, hai việc khác nhau
 

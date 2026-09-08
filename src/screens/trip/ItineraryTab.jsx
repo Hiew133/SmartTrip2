@@ -403,34 +403,31 @@ export default function ItineraryTab({ trip, editable }) {
       </section>
 
       <figure className="st-mapfig">
-        {/* The stage wraps only the map, so the docked panel is positioned
-            against the map and not against the caption underneath it. */}
-        <div className="st-mapstage">
-          <Suspense fallback={<div className="st-mapwrap" style={{ height: 580 }} />}>
-            <MapView stops={day?.items ?? []} focusIdx={state.focusIdx}
-              routePath={route?.path ?? null} onBasemap={setDrawnBy} style={{ height: 580 }} />
-          </Suspense>
-
-          {/* Docked over the map rather than given a tab of its own: the day it
-              rewrites is the day on screen, and applying a change redraws the
-              pins under it without anyone navigating anywhere.
-
-              Keyed by the day so switching day starts a fresh conversation —
-              see the note in AssistantPanel about why the thread must not
-              outlive the day it was about. */}
-          {editable && state.assistOpen && (
-            <div className="st-assist-dock">
-              <AssistantPanel key={dayIdx} trip={trip} dayIdx={dayIdx}
-                onClose={() => patch({ assistOpen: false })} />
-            </div>
-          )}
-        </div>
-
+        <Suspense fallback={<div className="st-mapwrap" style={{ height: 580 }} />}>
+          <MapView stops={day?.items ?? []} focusIdx={state.focusIdx}
+            routePath={route?.path ?? null} onBasemap={setDrawnBy} style={{ height: 580 }} />
+        </Suspense>
         <figcaption style={{ marginTop: 10, fontSize: 12 }}>
           Bản đồ © {mapCredit} · ghim đang chọn đổi sang màu rêu
           <En> · tap a stop to locate it</En>
         </figcaption>
       </figure>
+
+      {/* Pinned to the corner of the window, not to the map. It used to sit
+          inside the map's box and inherited its width, which left the
+          conversation squeezed into a column narrower than the messages in it.
+          Fixed to the viewport it can be as wide as a chat needs to be, and it
+          stays put while the itinerary beside it scrolls.
+
+          Keyed by the day so switching day starts a fresh conversation — see
+          the note in AssistantPanel about why the thread must not outlive the
+          day it was about. */}
+      {editable && state.assistOpen && (
+        <div className="st-assist-dock">
+          <AssistantPanel key={dayIdx} trip={trip} dayIdx={dayIdx}
+            onClose={() => patch({ assistOpen: false })} />
+        </div>
+      )}
     </div>
   );
 }

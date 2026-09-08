@@ -75,6 +75,9 @@
   --z-base: 1;
   --z-sticky: 100;
   --z-nav: 200;
+  /* between the nav and the dialog: a floating panel covers the page but must
+     never cover a toast telling you what just happened to your trip */
+  --z-panel: 300;
   --z-dialog: 400;
   --z-grain: 900;
 }
@@ -884,19 +887,22 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
    what you asked for next to what came back. The person's own words sit on
    the accent, the assistant's on paper, so a glance tells you who said what
    without reading a single word. */
-/* Docked over the map, the way a chat window sits over a page. It covers the
-   lower part of the map rather than the whole of it, so the pins the
-   conversation is about stay visible above it. */
+/* Pinned to the corner of the window, the way a chat widget is.
+
+   It used to be absolutely positioned inside the map's box, which meant it
+   inherited the map column's width — a conversation squeezed into something
+   narrower than its own messages. Fixed to the viewport it can be as wide as
+   a chat needs, and it stays put while the itinerary beside it scrolls. */
 .st-assist-dock {
-  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2;
-  max-height: calc(100% - 84px); display: flex;
-  border-radius: 20px; overflow: hidden;
-  background: color-mix(in srgb, var(--color-bg) 96%, transparent);
+  position: fixed; right: 24px; bottom: 24px; z-index: var(--z-panel);
+  width: min(430px, calc(100vw - 48px));
+  max-height: min(660px, calc(100vh - 130px));
+  display: flex; border-radius: 22px; overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg) 97%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
   box-shadow: var(--shadow-lg);
   animation: st-pop 240ms var(--ease-out) both;
 }
-.st-mapstage { position: relative; }
 
 .st-chat { display: flex; flex-direction: column; gap: 12px; width: 100%; min-height: 0; padding: 14px 16px 16px; }
 .st-chat-bar { display: flex; align-items: center; gap: 10px; font-size: 14px; }
@@ -1279,11 +1285,13 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
   .st-rail-day { width: auto; white-space: nowrap; }
   .st-rail-day-what { display: none; }
 
-  /* A floating panel on a map that is now full width would cover the pins it
-     is talking about, so it becomes an ordinary block under the map. */
+  /* On a phone a corner panel is just a small panel in a corner, so it becomes
+     a sheet across the bottom instead — still pinned to the window, still
+     closable, but wide enough to read. */
   .st-assist-dock {
-    position: static; max-height: none; margin-top: 14px;
-    animation: none;
+    left: 12px; right: 12px; bottom: 12px; width: auto;
+    max-height: min(72vh, calc(100vh - 96px));
+    border-radius: 20px;
   }
   .st-login { grid-template-columns: 1fr; }
   .st-login-art { min-height: 230px; order: -1; }
