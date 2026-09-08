@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useApp, useTripsReady } from '../store.jsx';
 import {
-  SEED_TRIPS, STATUS_LABEL, daysUntil, fmt, formatRange, photo, stopCount, tripStatus, tripTotal,
+  SEED_TRIPS, STATUS_LABEL, daysUntil, fmt, formatRange, stopCount, tripStatus, tripTotal,
 } from '../data.js';
 import { Compass, En, Photo, Plus, Search, muted } from '../components/ui.jsx';
+import { useTripPhoto } from '../components/usePlacePhoto.js';
 
 const STATUS = ['Tất cả', 'Sắp tới', 'Nháp', 'Đã đi'];
 
@@ -18,6 +19,10 @@ function spendLine(trip, status) {
 }
 
 function TripCard({ trip, featured, onOpen }) {
+  /* A photograph of somewhere on this trip, not a stable random one. Null
+     until it arrives, and null forever for a trip with no pinned stop — the
+     plate underneath is a design, not a placeholder. */
+  const cover = useTripPhoto(trip);
   const status = tripStatus(trip);
   const tag = STATUS_LABEL[status];
   const stops = stopCount(trip);
@@ -26,8 +31,7 @@ function TripCard({ trip, featured, onOpen }) {
     <article className={`st-trip ${featured ? 'st-trip-feature' : ''} st-reveal`} role="button" tabIndex={0}
       aria-label={`Mở chuyến đi ${trip.title}`}
       onClick={onOpen} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}>
-      <Photo className="st-trip-media" src={photo(trip.seed, featured ? 1000 : 800, featured ? 900 : 560)}
-        alt={trip.alt}>
+      <Photo className="st-trip-media" src={cover} alt={trip.alt}>
         <div className="st-plate-cap">
           <span className="tag" style={{ background: 'rgba(255,255,255,.9)', color: 'var(--color-accent-900)' }}>
             {tag.label}

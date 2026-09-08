@@ -12,7 +12,7 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm test           # logic thuần — 115 ca, vài giây, không cần gì ngoài node
+npm test           # logic thuần — 133 ca, vài giây, không cần gì ngoài node
 npm run test:rules # kiểm thử Security Rules trên emulator — 44 ca
 ```
 
@@ -53,7 +53,7 @@ store, rồi mới gọi từ màn hình.
 
 ### Logic thuần nằm ngoài React, có chủ ý
 
-`budget.js`, `itinerary.js`, `places.js`, `maps.js`, `guide.js`, `phrasebook.js` ở đầu `src/` không import React và không import
+`budget.js`, `itinerary.js`, `places.js`, `maps.js`, `photos.js`, `guide.js`, `phrasebook.js` ở đầu `src/` không import React và không import
 backend. Lý do rất cụ thể: `store.jsx` có JSX nên `node --test` không nạp được, và
 `backend/config.js` đọc `import.meta.env` nên bất cứ thứ gì chạm vào nó cũng ngoài tầm
 với của Node trần. Muốn test một hàm mà không kéo theo cả một test runner cho trình duyệt
@@ -156,7 +156,7 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Backend cho Gemini | Vertex AI mặc định — đã xác nhận dựng đúng `AgentPlatformBackend` / `AGENT_PLATFORM` / vùng `global` trên project thật; **lượt gọi model chưa thử** (xem dưới) |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
 | Test Security Rules | ✅ 44/44 pass trên emulator (quyền + shape dữ liệu ghi vào) |
-| Test logic thuần | ✅ 115/115 pass, `npm test`, không cần emulator |
+| Test logic thuần | ✅ 133/133 pass, `npm test`, không cần emulator |
 | CI | ✅ `.github/workflows/ci.yml` — lint + unit + build, rules ở job riêng có JDK 21 |
 | Tìm kiếm địa điểm | ✅ Nominatim mặc định (không cần khoá), Goong khi có `VITE_GOONG_API_KEY` |
 | Bản đồ nền Goong | ✅ vector tile qua MapLibre khi có `VITE_GOONG_MAPTILES_KEY`, tự rơi về OSM |
@@ -168,7 +168,8 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Liên kết chia sẻ `/t/{id}` | ✅ mở đúng chuyến, giữ được qua bước đăng nhập |
 | Cẩm nang bản địa | ✅ một mục trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
 | Trợ lý trong chuyến đi | ✅ panel trò chuyện dán trên bản đồ — hỏi được, đề xuất một ngày, xem trước rồi mới ghi |
-| Sổ tay dịch | ✅ màn `Dịch` trên nav, cache trong máy nên mở lại không tốn lượt gọi AI |
+| Sổ tay dịch | ✅ Việt·Anh·Nhật hai chiều, có micro và loa (Web Speech API), cache trong máy |
+| Ảnh bìa địa điểm | ✅ Wikipedia geosearch theo toạ độ, không cần khoá, cache trong máy |
 
 > **`.env.local` không có trong git.** Máy nào chưa có thì app chạy **chế độ thử**:
 > dữ liệu trong localStorage, Trợ lý AI trả bản nháp mẫu. Đó là hành vi đúng, không
@@ -633,6 +634,66 @@ Ba cái bẫy đã dẫm phải khi dựng:
   bóp vào chỗ hẹp hơn chính những tin nhắn trong nó. Giờ `position: fixed` ở góc phải-dưới,
   rộng `min(430px, 100vw - 48px)`, và màn hẹp thì trải ngang thành một tấm dưới đáy.
   Nó cũng đứng yên khi lịch trình bên cạnh cuộn.
+
+## Ảnh bìa lấy theo toạ độ, không lấy theo tên
+
+Trước đây bìa chuyến đi là `picsum.photos/seed/<ngẫu nhiên>` — một ảnh ngẫu nhiên nhưng cố
+định cho mỗi chuyến, trông có bố cục mà chẳng nói gì. Hai chuyến cùng đi Hội An ra hai tấm
+ảnh không liên quan, và một chuyến vừa tạo từ bản nháp AI trông y hệt chuyến bên cạnh.
+
+Giờ nó dùng thứ app đã có sẵn: **toạ độ**. `photoAnchor()` lấy điểm dừng đầu tiên có toạ độ
+trong chuyến, rồi Wikipedia `generator=geosearch` trả về các bài viết quanh điểm đó kèm ảnh
+đại diện. Bìa của một chuyến là ảnh của một nơi nằm trên chính chuyến đó.
+
+**Tìm theo tên đã thử và đã bỏ.** Full-text search của Wikipedia trả lời "Đà Nẵng" bằng
+"Quần đảo Hoàng Sa", còn `opensearch` trả lời bằng một bộ phim. Một toạ độ thì không đọc
+nhầm kiểu đó được.
+
+Bốn chi tiết:
+
+- **`origin=*` là thứ làm nó chạy được từ trình duyệt.** Thiếu nó thì mọi request hỏng ở
+  tầng fetch chứ không phải ở tầng parse, và triệu chứng là "không có ảnh" chứ không phải
+  một lỗi CORS dễ đọc.
+- **Gợi ý để chọn là tên điểm dừng, không phải tên chuyến.** "Đà Nẵng – Hội An" không khớp
+  bài viết nào; "Biển Mỹ Khê" khớp đúng "Bãi biển Mỹ Khê". `words()` bỏ dấu và loại những từ
+  mà nửa số địa danh Việt Nam đều có (bãi, chùa, cầu, núi…) để phần khớp còn lại có nghĩa.
+- **Cache cả câu trả lời rỗng**, kèm TTL một ngày. Không có nó thì mỗi lần render một chuyến
+  ở nơi Wikipedia chưa từng biết là thêm một request cho một câu trả lời không đổi.
+  Wikipedia có chặn tốc độ với người gọi ẩn danh, và một cái bìa không đáng để retry.
+- **Không có ảnh là một câu trả lời hợp lệ.** `.st-plate` vẽ sẵn gradient kèm đường đồng
+  mức, nên chuyến chưa ghim điểm nào vẫn ra dáng. `Photo` giờ bỏ hẳn thẻ `<img>` khi `src`
+  rỗng thay vì để nó lỗi rồi mới ẩn.
+
+## Sổ tay dịch: ba ngôn ngữ, hai chiều, và giọng nói của trình duyệt
+
+Trước đây là một chiều — tiếng Việt ra tám ngôn ngữ. Đó là hình dạng của một cuốn sổ tay,
+không phải của một cuộc trò chuyện: người đối diện đáp lại một câu là tám ngôn ngữ một
+chiều không chở nổi.
+
+Ba chứ không phải tám vì một ngôn ngữ ở đây không chỉ là một cái chip: mỗi cái cần một
+giọng trình duyệt đọc và nghe được, và một dòng `roman` có nghĩa. Thêm cái thứ tư là thêm
+một dòng trong `LANGS` và kiểm xem thẻ speech có tồn tại không.
+
+**`phraseKey` giờ mang cả hai đầu của chiều dịch.** `from` không phải trang trí: "no" từ
+tiếng Anh sang Việt và "no" từ tiếng Nhật sang Việt là hai câu hỏi khác nhau với hai câu
+trả lời khác nhau, mà một khoá chỉ có đích sẽ phục vụ câu này bằng câu trả lời của câu kia.
+`cleanTranslation` mặc định `from: 'vi'` cho các mục ghi từ thời một chiều — hồi đó tất cả
+đều là tiếng Việt đi ra, nên đó là câu trả lời đúng chứ không phải một cú đoán.
+
+**Giọng nói đi bằng Web Speech API của chính trình duyệt**, không qua dịch vụ nào: không
+cần khoá, và không có đoạn ghi âm cuộc trò chuyện của ai bị gửi đi đâu cả. Nhưng nó được
+cài đặt không đều, và điều đó định hình cả thiết kế: **đọc thì trình duyệt nào cũng có,
+nghe thì Chrome/Edge/Safari có còn Firefox thì không**. Nên `useSpeech.js` tách làm hai
+hook, mỗi cái tự khai báo có chạy được không, và màn hình **ẩn nút** thay vì đưa ra một cái
+bấm vào không xảy ra gì.
+
+Hai chi tiết dễ quên:
+
+- **Dọn dẹp lúc rời màn.** Một recogniser còn chạy giữ nguyên chỉ báo micro sau khi người
+  dùng đã đi chỗ khác, và cái đó đọc ra là "ứng dụng đang nghe lén". `speechSynthesis` cũng
+  phải `cancel()`, nếu không giọng đọc nói đè lên màn hình tiếp theo.
+- **`speechSynthesis` có một hàng đợi cho cả trang.** Bấm nút hai lần phải là thay câu đang
+  đọc, không phải xếp thêm một bản sao phía sau, nên `speak()` luôn `cancel()` trước.
 
 ## Hai trợ lý, hai việc khác nhau
 

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useApp, useActiveTrip, useTripRole, canEdit } from '../store.jsx';
 import { computeBudget } from '../budget.js';
-import { STATUS_LABEL, dayLabel, fmt, formatRange, photo, stopCount, tripStatus } from '../data.js';
+import { STATUS_LABEL, dayLabel, fmt, formatRange, stopCount, tripStatus } from '../data.js';
 import { Avatar, ChevronLeft, Compass, Photo, Printer, Users } from '../components/ui.jsx';
 import { useFieldDraft } from '../components/useFieldDraft.js';
+import { useTripPhoto } from '../components/usePlacePhoto.js';
 import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
 import MembersTab from './trip/MembersTab.jsx';
@@ -35,6 +36,9 @@ export default function Trip() {
   const title = useFieldDraft(trip?.title, (v) => actions.updateTrip({ title: v }));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  /* Hooks run before the early return below, so this one takes a possibly-null
+     trip — photoAnchor answers null for it and the plate stands in. */
+  const cover = useTripPhoto(trip);
 
   /* Only the owner may delete — the rules say so too, so a viewer or editor
      pressing this would just collect a permission error. On success the store
@@ -112,7 +116,7 @@ export default function Trip() {
       )}
 
       <header className="st-hero st-rise st-reveal">
-        <Photo src={photo(trip.seed, 1800, 800)} alt={trip.alt} />
+        <Photo src={cover} alt={trip.alt} />
         <div className="st-hero-body">
           <div>
             {editable ? (

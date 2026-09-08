@@ -193,6 +193,10 @@ export function cleanTranslation(raw) {
     roman: clip(raw.roman, GUIDE.phrase),
     literal: clip(raw.literal, GUIDE.phrase),
     note: clip(raw.note, GUIDE.tip),
+    /* Both ends of the direction. Entries written before translation went
+       two-way have no `from`; they were all Vietnamese out, so that is what
+       they get, rather than being dropped or left keyed on nothing. */
+    from: clip(raw.from, 100) || 'vi',
     target: clip(raw.target, 100),
     createdAt: num(raw.createdAt, 0),
   };

@@ -22,10 +22,6 @@ export const CATEGORIES = ['Đi lại', 'Lưu trú', 'Ăn uống', 'Vé tham qua
 export const fmt = (n) => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')}\u00A0₫`;
 export const first = (name) => String(name || '').trim().split(/\s+/)[0] || '—';
 
-/* Photo helper — seeded so each place keeps the same image between renders.
-   Every plate has a gradient underlay, so a blocked request still looks composed. */
-export const photo = (seed, w = 1200, h = 800) => `https://picsum.photos/seed/${seed}/${w}/${h}`;
-
 /* ── date helpers ───────────────────────────────────────────────────────── */
 
 const pad = (n) => String(n).padStart(2, '0');

@@ -1,21 +1,49 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../store.jsx';
 import {
-  PHRASE_MAX, TARGETS, inTarget, isTranslatable, normalize, recall, targetLabel,
+  LANGS, PHRASE_MAX, inPair, isTranslatable, langLabel, normalize, recall, speechTag, usesLatin,
 } from '../phrasebook.js';
 import {
   aiAvailable, forgetPhrases, readPhrases, savePhrase, translateText,
 } from '../backend/index.js';
-import { ArrowRight, Check, En } from '../components/ui.jsx';
+import { ArrowRight, Check, En, Mic, Speaker, Swap } from '../components/ui.jsx';
+import { useDictation, useSpeaking } from '../components/useSpeech.js';
 
-/* Everything this screen shows is device-local: the phrases are cached in the
-   browser, not in a trip, because they belong to whoever is standing there
-   asking — not to the group. That also makes the whole screen work with no
-   signal, which is when a person is most likely to need it. */
+/* Two panes and a swap between them, because a conversation has two sides.
+ *
+ * This screen used to translate one way — Vietnamese out into any of eight
+ * languages — which is a phrasebook. The moment the other person answers, a
+ * phrasebook has nothing to offer. Three languages in either direction is the
+ * smaller, more useful shape: you say something, they say something back, and
+ * both halves land on the same screen.
+ *
+ * Everything here is device-local. The phrases are cached in the browser, not
+ * in a trip, because they belong to whoever is standing there asking — and
+ * that is also what makes the screen work with no signal, which is exactly
+ * when somebody needs it most.
+ */
+
+function LangPicker({ value, onPick, exclude, label }) {
+  return (
+    <div className="st-tr-langs" role="group" aria-label={label}>
+      {LANGS.map((l) => (
+        <button key={l.code} type="button"
+          className={`st-tr-lang ${l.code === value ? 'active' : ''}`}
+          aria-pressed={l.code === value}
+          disabled={l.code === exclude}
+          title={l.code === exclude ? 'Đang là ngôn ngữ bên kia' : undefined}
+          onClick={() => onPick(l.code)}>
+          {l.native}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Translate() {
   const { notify } = useApp();
-  const [target, setTarget] = useState(TARGETS[0].code);
+  const [from, setFrom] = useState('vi');
+  const [target, setTarget] = useState('en');
   const [text, setText] = useState('');
   const [history, setHistory] = useState(() => readPhrases());
   const [result, setResult] = useState(null);
@@ -23,22 +51,52 @@ export default function Translate() {
   const [error, setError] = useState('');
   const outRef = useRef(null);
 
-  const recent = inTarget(history, target).slice(0, 8);
-  const cached = recall(history, text, target);
+  const voice = useSpeaking();
+  /* Dictation writes straight into the box and then translates, so the whole
+     spoken-to-spoken path is one press of the microphone. */
+  const ear = useDictation({
+    tag: speechTag(from),
+    onFinal: (said) => { setText(said); run(said); },
+  });
 
-  const run = async () => {
-    const source = normalize(text);
+  const recent = inPair(history, from, target).slice(0, 8);
+  const cached = recall(history, text, from, target);
+
+  const swap = () => {
+    /* Swapping carries the answer back into the box: they said something, you
+       read it, and now you want to reply to exactly that. */
+    setFrom(target);
+    setTarget(from);
+    setText(result ? result.text : '');
+    setResult(null);
+    setError('');
+  };
+
+  const pick = (side) => (code) => {
+    if (side === 'from') {
+      setFrom(code);
+      if (code === target) setTarget(from);     // never let both sides agree
+    } else {
+      setTarget(code);
+      if (code === from) setFrom(target);
+    }
+    setResult(null);
+    setError('');
+  };
+
+  const run = async (raw = text) => {
+    const source = normalize(raw);
     if (!isTranslatable(source)) {
       setError(source
         ? `Câu này dài quá — cắt xuống dưới ${PHRASE_MAX} ký tự rồi dịch từng đoạn.`
-        : 'Gõ câu bạn muốn nói đã.');
+        : 'Gõ hoặc nói câu bạn muốn dịch đã.');
       return;
     }
 
-    /* A sentence already asked about is answered from the phonebook rather
-       than the model: it is the same answer, it costs nothing, and it is the
-       only one available when there is no network. */
-    const known = recall(history, source, target);
+    /* A sentence already asked about is answered from the phrasebook rather
+       than the model: same answer, costs nothing, and it is the only one
+       available with no network. */
+    const known = recall(history, source, from, target);
     if (known) {
       setResult(known);
       setError('');
@@ -48,7 +106,13 @@ export default function Translate() {
     setBusy(true);
     setError('');
     try {
-      const out = await translateText({ text: source, target, targetName: targetLabel(target) });
+      const out = await translateText({
+        text: source,
+        from,
+        fromName: langLabel(from),
+        target,
+        targetName: langLabel(target),
+      });
       setHistory(savePhrase(out));
       setResult(out);
     } catch (err) {
@@ -75,11 +139,15 @@ export default function Translate() {
     }
   };
 
-  const reuse = (entry) => {
-    setText(entry.source);
-    setResult(entry);
+  const reuse = (e) => {
+    setFrom(e.from);
+    setTarget(e.target);
+    setText(e.source);
+    setResult(e);
     setError('');
   };
+
+  const shown = ear.listening && ear.heard ? ear.heard : text;
 
   return (
     <div className="st-page st-page-narrow">
@@ -87,8 +155,8 @@ export default function Translate() {
         <span className="st-eyebrow">Sổ tay dịch<En>&nbsp;· Phrasebook</En></span>
         <h1 className="st-display">Nói được câu cần nói</h1>
         <p className="st-lede" style={{ margin: '14px 0 0' }}>
-          Gõ câu tiếng Việt, đưa màn hình cho người đối diện đọc. Câu nào đã dịch một lần
-          thì nằm lại trong máy — mất mạng vẫn mở ra được.
+          Việt · Anh · Nhật, dịch được cả hai chiều. Bấm micro để nói, bấm loa để máy đọc
+          câu đó lên. Câu nào đã dịch một lần thì nằm lại trong máy — mất mạng vẫn mở được.
         </p>
         {!aiAvailable && (
           <p className="st-hint" style={{ marginTop: 18, display: 'inline-flex' }}>
@@ -97,64 +165,108 @@ export default function Translate() {
         )}
       </header>
 
-      <div className="st-rise" style={{ marginTop: 30 }}>
-        <div className="field">
-          <label>Dịch sang<En> · Translate into</En></label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {TARGETS.map((t) => (
-              <button key={t.code} type="button" className={`st-chip ${t.code === target ? 'active' : ''}`}
-                aria-pressed={t.code === target}
-                onClick={() => { setTarget(t.code); setResult(null); setError(''); }}>
-                {t.label}
-              </button>
-            ))}
+      <div className="st-tr st-rise">
+        {/* — what you say — */}
+        <section className="st-tr-pane">
+          <div className="st-tr-head">
+            <LangPicker value={from} onPick={pick('from')} exclude={target} label="Ngôn ngữ nguồn" />
           </div>
-        </div>
-
-        <div className="field" style={{ marginTop: 18 }}>
-          <label htmlFor="tr-text">Câu của bạn</label>
-          <textarea className="input st-translate-in" id="tr-text" rows={3} value={text}
-            maxLength={PHRASE_MAX} placeholder="vd: Cho tôi một phần không cay, không hành."
+          <textarea className="input st-tr-text" id="tr-text" rows={4} value={shown}
+            maxLength={PHRASE_MAX} lang={from}
+            aria-label={`Câu tiếng ${langLabel(from).replace('Tiếng ', '')}`}
+            placeholder={ear.listening ? 'Đang nghe…' : 'vd: Cho tôi một phần không cay, không hành.'}
             onChange={(e) => { setText(e.target.value); setError(''); }}
             /* Enter sends, Shift+Enter is a new line — the phone keyboard case */
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run(); }
             }} />
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-primary" onClick={run} disabled={busy}>
-            {busy ? 'Đang dịch…' : <>Dịch<ArrowRight width="15" height="15" /></>}
-          </button>
-          {cached && !busy && (
-            <span className="text-muted" style={{ fontSize: 13 }}>
-              Câu này đã dịch rồi — mở lại không tốn thêm lượt gọi AI.
-            </span>
-          )}
-        </div>
-
-        {error && <p className="st-error" style={{ marginTop: 16 }}>{error}</p>}
-      </div>
-
-      {result && (
-        <div className="st-translate-out st-rise" ref={outRef} tabIndex={-1}>
-          <span className="st-translate-label">{targetLabel(result.target)}</span>
-          {/* the line a stranger reads off the screen, so it is the biggest thing here */}
-          <p className="st-translate-text" lang={result.target || undefined}>{result.text}</p>
-          {result.roman && <p className="st-translate-roman">Đọc là: {result.roman}</p>}
-          {result.literal && (
-            <p className="st-translate-back">
-              <b>Nghĩa đen:</b> {result.literal}
-              <En> · what it literally says back in Vietnamese</En>
-            </p>
-          )}
-          {result.note && <p className="st-translate-note">{result.note}</p>}
-          <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-secondary" onClick={copy}>
-              <Check width="14" height="14" />Sao chép
+          <div className="st-tr-foot">
+            {ear.supported && (
+              <button type="button"
+                className={`st-tr-mic ${ear.listening ? 'live' : ''}`}
+                aria-pressed={ear.listening}
+                aria-label={ear.listening ? 'Dừng nghe' : `Nói bằng ${langLabel(from)}`}
+                onClick={() => (ear.listening ? ear.stop() : ear.start())}>
+                <Mic width="17" height="17" />
+                {ear.listening ? 'Đang nghe…' : 'Nói'}
+              </button>
+            )}
+            {voice.supported && shown.trim() && !ear.listening && (
+              <button type="button" className="st-tr-icon" aria-label="Đọc câu của bạn"
+                onClick={() => voice.speak(shown, speechTag(from))}>
+                <Speaker width="16" height="16" />
+              </button>
+            )}
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn btn-primary" style={{ fontSize: 13 }}
+              onClick={() => run()} disabled={busy || ear.listening}>
+              {busy ? 'Đang dịch…' : <>Dịch<ArrowRight width="14" height="14" /></>}
             </button>
           </div>
-        </div>
+        </section>
+
+        <button type="button" className="st-tr-swap" onClick={swap}
+          aria-label={`Đổi chiều: ${langLabel(target)} sang ${langLabel(from)}`}>
+          <Swap width="18" height="18" />
+        </button>
+
+        {/* — what they read — */}
+        <section className="st-tr-pane out" ref={outRef} tabIndex={-1}>
+          <div className="st-tr-head">
+            <LangPicker value={target} onPick={pick('target')} exclude={from} label="Ngôn ngữ đích" />
+          </div>
+
+          {result ? (
+            <>
+              {/* the line a stranger reads off the screen, so it is the biggest thing here */}
+              <p className="st-translate-text" lang={result.target}>{result.text}</p>
+              {result.roman && !usesLatin(result.target) && (
+                <p className="st-translate-roman">Đọc là: {result.roman}</p>
+              )}
+              {result.literal && (
+                <p className="st-translate-back">
+                  <b>Nghĩa đen:</b> {result.literal}
+                  <En> · what it literally says back</En>
+                </p>
+              )}
+              {result.note && <p className="st-translate-note">{result.note}</p>}
+            </>
+          ) : (
+            <p className="st-tr-empty">
+              {busy ? 'Đang dịch…' : 'Bản dịch sẽ hiện ở đây, đủ to để đưa màn hình cho người đối diện đọc.'}
+            </p>
+          )}
+
+          <div className="st-tr-foot">
+            {voice.supported && result && (
+              <button type="button" className={`st-tr-mic ${voice.speaking ? 'live' : ''}`}
+                aria-label={`Đọc bản dịch bằng ${langLabel(target)}`}
+                onClick={() => (voice.speaking ? voice.hush() : voice.speak(result.text, speechTag(target)))}>
+                <Speaker width="17" height="17" />
+                {voice.speaking ? 'Đang đọc…' : 'Nghe'}
+              </button>
+            )}
+            <span style={{ flex: 1 }} />
+            {result && (
+              <button type="button" className="btn btn-secondary" style={{ fontSize: 13 }} onClick={copy}>
+                <Check width="14" height="14" />Sao chép
+              </button>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {(error || ear.error) && <p className="st-error" style={{ marginTop: 14 }}>{error || ear.error}</p>}
+      {cached && !busy && !result && (
+        <p className="text-muted" style={{ fontSize: 13, marginTop: 12 }}>
+          Câu này đã dịch rồi — mở lại không tốn thêm lượt gọi AI.
+        </p>
+      )}
+      {!ear.supported && (
+        <p className="st-fineprint">
+          Trình duyệt này không nhận dạng được giọng nói, nên chỉ có phần gõ chữ. Chrome,
+          Edge và Safari thì có; Firefox thì chưa.
+        </p>
       )}
 
       {recent.length > 0 && (
@@ -170,15 +282,16 @@ export default function Translate() {
             </button>
           </div>
           <p className="text-muted" style={{ fontSize: 13, margin: '0 0 14px' }}>
-            Nằm trong trình duyệt này, mở được khi không có mạng.
+            Cả hai chiều của cặp ngôn ngữ đang chọn, nằm trong trình duyệt này.
           </p>
           <div className="st-phrases">
             {recent.map((e) => (
-              <button key={`${e.target}-${e.source}`} type="button" className="st-phrase st-phrase-btn"
+              <button key={`${e.from}-${e.target}-${e.source}`} type="button" className="st-phrase st-phrase-btn"
                 onClick={() => reuse(e)}>
+                <span className="st-phrase-dir">{langLabel(e.from)} → {langLabel(e.target)}</span>
                 <span className="st-phrase-vi">{e.source}</span>
-                <span className="st-phrase-local">{e.text}</span>
-                {e.roman && <span className="st-phrase-roman">đọc: {e.roman}</span>}
+                <span className="st-phrase-local" lang={e.target}>{e.text}</span>
+                {e.roman && !usesLatin(e.target) && <span className="st-phrase-roman">đọc: {e.roman}</span>}
               </button>
             ))}
           </div>

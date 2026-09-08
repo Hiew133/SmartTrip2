@@ -33,6 +33,28 @@ export const Plus = (p) => (
 export const Minus = (p) => (
   <svg {...ico} {...p}><path d="M5 12h14" /></svg>
 );
+export const Mic = (p) => (
+  <svg {...ico} {...p}>
+    <rect x="9" y="2.6" width="6" height="11" rx="3" />
+    <path d="M5.5 11.2a6.5 6.5 0 0 0 13 0" />
+    <path d="M12 17.7v3.7" />
+  </svg>
+);
+/* a speaker with two arcs — the arcs are the only thing that says "out loud" */
+export const Speaker = (p) => (
+  <svg {...ico} {...p}>
+    <path d="M11 4.6 6.4 8.6H3.2v6.8h3.2L11 19.4z" />
+    <path d="M15.2 9.4a3.6 3.6 0 0 1 0 5.2" />
+    <path d="M18 6.8a7.2 7.2 0 0 1 0 10.4" />
+  </svg>
+);
+/* two arrows changing places: the direction of the translation, not a refresh */
+export const Swap = (p) => (
+  <svg {...ico} {...p}>
+    <path d="M4 8.4h13" /><path d="m13.6 4.8 3.6 3.6-3.6 3.6" />
+    <path d="M20 15.6H7" /><path d="m10.4 12 -3.6 3.6 3.6 3.6" />
+  </svg>
+);
 /* a compass rose, not the usual "sparkles" wand */
 export const Compass = (p) => (
   <svg {...ico} {...p}>
@@ -121,11 +143,16 @@ export function useCountUp(target, dur = 850) {
 
 /* Photographic plate. The gradient underlay is the real surface — the image
    layers on top, so a blocked or slow request degrades to a duotone, never a gap. */
+/* A cover. `src` is allowed to be null and that is not a failure: the plate
+   underneath is a gradient with map contours drawn on it, so a trip with no
+   photograph still looks like something somebody designed. That matters more
+   now than it did — covers used to be a random image per trip, which always
+   showed *something* and never showed the place. */
 export function Photo({ src, alt, className = '', children, style }) {
   const [failed, setFailed] = useState(false);
   return (
     <div className={`st-plate ${className}`} style={style}>
-      {!failed && <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />}
+      {src && !failed && <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />}
       {children}
     </div>
   );

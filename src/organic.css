@@ -1238,6 +1238,105 @@ button.st-navmeta[aria-current='page'] { background: var(--color-accent-100); }
 
 .st-translate-in { resize: vertical; min-height: 84px; line-height: 1.5; font-size: 15px; }
 
+/* — the translator: two panes with a swap between them —
+   Side by side on a desktop, stacked on a phone with the swap sitting on the
+   seam either way, because that button is what makes it a conversation rather
+   than a phrasebook. */
+.st-tr {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 16px; align-items: stretch; margin-top: 26px;
+}
+.st-tr-pane {
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  padding: 18px 20px 16px; border-radius: 24px;
+  background: color-mix(in srgb, var(--color-neutral-100) 52%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+/* the side a stranger reads gets the warmer ground, so it is obvious which is which */
+.st-tr-pane.out {
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-neutral-100));
+  border-color: color-mix(in srgb, var(--color-accent) 24%, transparent);
+}
+.st-tr-pane.out:focus { outline: 2px solid var(--color-accent-400); outline-offset: 3px; }
+.st-tr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.st-tr-langs { display: flex; gap: 4px; flex-wrap: wrap; }
+.st-tr-lang {
+  cursor: pointer; font: inherit; font-weight: 600; font-size: 12.5px;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid transparent;
+  background: transparent; color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.st-tr-lang:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.st-tr-lang.active { background: var(--color-text); color: var(--color-bg); }
+/* the language in use on the other side, greyed rather than hidden so the set
+   of three stays the same shape on both panes */
+.st-tr-lang:disabled { opacity: .32; cursor: not-allowed; }
+
+.st-tr-text {
+  flex: 1; min-height: 108px; resize: vertical;
+  font-size: 17px; line-height: 1.45; background: transparent; border-color: transparent;
+  padding-left: 0; padding-right: 0;
+}
+.st-tr-text:focus { border-color: transparent; box-shadow: none; }
+.st-tr-empty {
+  flex: 1; margin: 0; font-size: 14px; line-height: 1.5;
+  color: color-mix(in srgb, var(--color-text) 48%, transparent);
+}
+.st-tr-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Speaking and listening are the same size and shape, because they are the
+   same gesture pointed in opposite directions. */
+.st-tr-mic {
+  display: inline-flex; align-items: center; gap: 7px;
+  cursor: pointer; font: inherit; font-weight: 700; font-size: 13px;
+  padding: 8px 15px; border-radius: 999px;
+  border: 1px solid var(--color-divider); background: transparent; color: var(--color-text);
+  transition: all var(--dur) var(--ease-out);
+}
+.st-tr-mic:hover { border-color: var(--color-accent-400); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.st-tr-mic.live {
+  background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent);
+  animation: st-listening 1.6s var(--ease-out) infinite;
+}
+.st-tr-icon {
+  display: inline-flex; cursor: pointer; padding: 8px; border-radius: 999px;
+  border: 1px solid var(--color-divider); background: transparent; color: var(--color-text);
+  transition: all var(--dur) var(--ease-out);
+}
+.st-tr-icon:hover { border-color: var(--color-accent-400); }
+
+/* a pulse, so "it is listening" is visible from across a table */
+@keyframes st-listening {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-accent) 0%, transparent); }
+}
+
+.st-tr-swap {
+  align-self: center; cursor: pointer; display: inline-flex; padding: 11px;
+  border-radius: 999px; border: 1px solid var(--color-divider);
+  background: var(--color-bg); color: var(--color-accent-700);
+  transition: transform var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+.st-tr-swap:hover { transform: rotate(180deg); border-color: var(--color-accent-400); }
+
+.st-phrase-dir {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-tr-mic.live { animation: none; }
+  .st-tr-swap:hover { transform: none; }
+}
+
+@media (max-width: 860px) {
+  .st-tr { grid-template-columns: 1fr; }
+  .st-tr-swap { justify-self: center; }
+  .st-tr-swap:hover { transform: rotate(90deg); }
+}
+
 .st-translate-out {
   margin-top: 26px; padding: 26px 28px; border-radius: 26px;
   background: color-mix(in srgb, var(--color-accent) 7%, var(--color-neutral-100));

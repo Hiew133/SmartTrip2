@@ -21,7 +21,7 @@ npm run test:rules # test Security Rules trên emulator (cần JDK 21+)
 | Đăng nhập / Đăng ký | Firebase Auth: Google + Email/Password (chế độ thử khi chưa nối Firebase) |
 | Chuyến đi của tôi | Danh sách chuyến đi dạng card, tìm kiếm & lọc theo trạng thái, tạo chuyến trống |
 | Chi tiết chuyến đi | Một không gian ba cột: cột trái là các mục + danh sách ngày, giữa là nội dung, phải là bản đồ; trợ lý nổi ở góc màn hình |
-| Dịch | Sổ tay dịch: gõ câu tiếng Việt, đưa màn hình cho người bản địa đọc |
+| Dịch | Hai khung kiểu Google Dịch: Việt · Anh · Nhật, đổi chiều, nói bằng micro và nghe bằng loa |
 | Trợ lý AI | Form soạn lịch trình → loading → bản nháp đúng số ngày đã chọn |
 
 ## Ngôn ngữ thiết kế
@@ -77,11 +77,15 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
   tục, an toàn, kèm 10–14 câu giao tiếp có chữ bản địa và cách đọc, và các số khẩn cấp.
   Một document cho mỗi điểm đến, cả nhóm cùng đọc, và **bản sao nằm lại trong máy** nên
   mở được cả khi mất mạng.
-- **Sổ tay dịch** (nút `Dịch` trên nav) — gõ câu tiếng Việt, chọn ngôn ngữ, rồi đưa màn
-  hình cho người đối diện đọc: bản dịch được in to nhất trên trang, kèm cách đọc theo âm
-  tiếng Việt và **nghĩa đen dịch ngược** để bạn tự kiểm tra được câu mình sắp nói. Câu nào
-  đã dịch một lần thì nằm lại trong trình duyệt — mở lại không tốn thêm lượt gọi AI, và
+- **Sổ tay dịch** (nút `Dịch` trên nav) — hai khung như Google Dịch, **Việt · Anh · Nhật**
+  và đổi chiều được bằng một nút. Bấm **micro** để nói thay vì gõ, bấm **loa** để máy đọc
+  câu đó lên bằng giọng ngôn ngữ đích — cả hai chạy bằng Web Speech API của chính trình
+  duyệt, không cần khoá và không gửi đoạn ghi âm đi đâu. Bản dịch được in to nhất trên
+  trang để đưa màn hình cho người đối diện đọc, kèm cách đọc theo âm tiếng Việt (chỉ khi
+  ngôn ngữ đích không dùng chữ Latin) và **nghĩa đen dịch ngược** để bạn tự kiểm tra. Câu
+  nào đã dịch một lần thì nằm lại trong trình duyệt — mở lại không tốn thêm lượt gọi AI, và
   vẫn tra được khi không có mạng.
+  Firefox chưa nhận dạng giọng nói, nên ở đó nút micro tự ẩn thay vì bấm không ăn.
 - **Phụ đề tiếng Anh** bật/tắt (nút `EN` trên nav) — hỗ trợ khách quốc tế. Đây là phụ đề
   cạnh nhãn tiếng Việt, không phải dịch toàn bộ giao diện; mỗi phụ đề mang `lang="en"` nên
   trình đọc màn hình phát âm đúng tiếng Anh.
@@ -342,6 +346,7 @@ src/
   budget.js            # tính tiền: số dư, tất toán gọn nhất, khoá "đã trả"
   itinerary.js         # haversine, tối ưu tuyến, thứ tự theo giờ, di chuyển một dòng
   places.js            # dựng URL và đọc kết quả của dịch vụ tìm địa điểm
+  photos.js            # tìm ảnh thật của địa điểm theo toạ độ (Wikipedia geosearch)
   maps.js              # style bản đồ Goong, polyline, ma trận đường bộ, khoá cache
   guide.js             # slug điểm đến + đoán nơi nào đáng có cẩm nang
   phrasebook.js        # khoá cache và sổ tay các câu đã dịch
@@ -354,6 +359,7 @@ src/
     firestore.js       # repository chạy trên Firestore
     local.js           # repository chạy trên localStorage (chế độ thử)
     places.js          # gọi mạng cho tìm địa điểm (Nominatim hoặc Goong)
+    photos.js          # gọi mạng cho ảnh bìa + cache trong máy
     maps.js            # gọi mạng cho bản đồ nền, đường đi và ma trận khoảng cách (Goong)
     offline.js         # bản lưu của riêng máy: cẩm nang và sổ tay dịch
     ai.js              # gọi Gemini qua Firebase AI Logic — lịch trình, sửa một ngày, cẩm nang, dịch

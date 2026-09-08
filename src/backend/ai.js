@@ -514,32 +514,38 @@ export async function generateGuide({ dest }) {
 const translateSchema = (Schema) => Schema.object({
   properties: {
     text: Schema.string({ description: 'Bản dịch, viết bằng chữ của ngôn ngữ đích' }),
-    roman: Schema.string({ description: 'Cách đọc bản dịch, ghi theo âm tiếng Việt' }),
-    literal: Schema.string({ description: 'Nghĩa đen của bản dịch, dịch ngược lại tiếng Việt' }),
+    roman: Schema.string({
+      description: 'Cách đọc bản dịch, ghi theo âm tiếng Việt. Để trống nếu ngôn ngữ đích '
+        + 'vốn đã dùng chữ Latin và người Việt đọc thẳng được',
+    }),
+    literal: Schema.string({ description: 'Nghĩa đen của bản dịch, dịch ngược về ngôn ngữ nguồn' }),
     note: Schema.string({ description: 'Một câu lưu ý về mức lịch sự hoặc cách dùng, tiếng Việt' }),
   },
 });
 
-const translatePrompt = (text, targetName) => [
-  `Dịch câu sau sang ${targetName}, để một khách du lịch nói với người bản địa.`,
+const translatePrompt = (text, fromName, targetName) => [
+  `Dịch câu sau từ ${fromName} sang ${targetName}, trong một cuộc trò chuyện giữa`,
+  'khách du lịch và người bản địa.',
   '',
   `Câu cần dịch: "${text}"`,
   '',
   'Yêu cầu:',
   '- Dịch tự nhiên như người bản địa nói, không dịch từng chữ.',
   '- Giữ mức lịch sự trung tính, hợp khi nói với người lạ.',
-  '- Phần cách đọc ghi theo âm tiếng Việt.',
-  '- Phần nghĩa đen dịch ngược bản dịch về tiếng Việt, để người dùng tự kiểm tra được.',
+  `- Phần cách đọc ghi theo âm tiếng Việt; nếu ${targetName} đã dùng chữ Latin thì để trống.`,
+  `- Phần nghĩa đen dịch ngược bản dịch về ${fromName}, để người dùng tự kiểm tra được.`,
   '- Lưu ý viết bằng tiếng Việt, một câu, và chỉ khi thật sự có gì đáng nói.',
 ].join('\n');
 
 /**
- * Translate one line for the phrasebook. `target` is a language code from
- * phrasebook.js; `targetName` is what to call that language in the prompt.
+ * Translate one line, in either direction. `from` and `target` are language
+ * codes from phrasebook.js; the two `*Name` arguments are what to call those
+ * languages inside the prompt.
  */
-export async function translateText({ text, target, targetName }) {
+export async function translateText({ text, from, fromName, target, targetName }) {
   const source = String(text ?? '').trim();
   if (!source) throw new Error('Chưa có câu nào để dịch.');
+  if (from === target) throw new Error('Hai bên đang cùng một ngôn ngữ — đổi một bên rồi dịch lại.');
 
   if (!firebaseEnabled) {
     await new Promise((r) => setTimeout(r, 500));
@@ -550,6 +556,7 @@ export async function translateText({ text, target, targetName }) {
       text: source,
       literal: source,
       note: 'Chế độ thử chưa gọi Gemini nên câu này chưa được dịch. Xem README để bật AI Logic.',
+      from,
       target,
       createdAt: Date.now(),
     });
@@ -557,12 +564,12 @@ export async function translateText({ text, target, targetName }) {
 
   const parsed = await askModel({
     schema: translateSchema,
-    prompt: translatePrompt(source, targetName),
+    prompt: translatePrompt(source, fromName, targetName),
     temperature: 0.3,               // one right answer, not a creative one
     whenUnreadable: 'Bản dịch trả về không đọc được. Thử lại giúp mình.',
   });
 
-  const out = cleanTranslation({ ...parsed, source, target, createdAt: Date.now() });
+  const out = cleanTranslation({ ...parsed, source, from, target, createdAt: Date.now() });
   if (!out) throw new Error('Chưa dịch được câu này. Thử viết ngắn lại, hoặc tách thành hai câu.');
   return out;
 }

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useApp } from '../store.jsx';
-import { photo } from '../data.js';
 import {
   authMessage, firebaseEnabled, missingKeys,
   signInWithEmail, signInWithGoogle, signUpWithEmail,
@@ -140,8 +139,11 @@ export default function Login() {
       </section>
 
       <aside className="st-login-art">
-        <Photo src={photo('hoian-lanterns', 1400, 1800)}
-          alt="Đèn lồng phố cổ Hội An phản chiếu trên sông Hoài" />
+        {/* No photograph here on purpose. The random one that used to sit in
+            this slot was a picture of nowhere, captioned as Hội An. The plate
+            is a gradient with map contours on it, which is at least honest
+            about being a graphic. */}
+        <Photo src={null} alt="" />
         <figure className="st-login-quote">
           <blockquote>Bốn ngày, mười lăm điểm dừng, một nhóm bạn — và không ai phải nhớ mình đã ứng bao nhiêu.</blockquote>
           <figcaption>Đà Nẵng – Hội An · tháng 9, 2026</figcaption>
