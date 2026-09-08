@@ -153,7 +153,7 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Firestore đọc/ghi | ✅ chạy thật, chuyến đi đọc từ cloud |
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
-| Backend cho Gemini | Vertex AI là mặc định (`VITE_FIREBASE_AI_BACKEND`); `google` để về đường cũ |
+| Backend cho Gemini | Vertex AI mặc định — đã xác nhận dựng đúng `AgentPlatformBackend` / `AGENT_PLATFORM` / vùng `global` trên project thật; **lượt gọi model chưa thử** (xem dưới) |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
 | Test Security Rules | ✅ 44/44 pass trên emulator (quyền + shape dữ liệu ghi vào) |
 | Test logic thuần | ✅ 110/110 pass, `npm test`, không cần emulator |
@@ -584,6 +584,25 @@ như "gõ sai tên model". Bỏ trống `VITE_FIREBASE_AI_LOCATION` là dùng m�
 Vẫn nguyên luật cũ, không đổi theo backend: **mọi object lồng trong schema phải viết
 `Schema.object({ properties: { … } })`**.
 
+### Đã xác nhận tới đâu
+
+Chạy trong trình duyệt với `.env.local` thật của project `nihon-speaking-29442-5f1db`:
+`firebaseEnabled` true, `getAI` dựng ra **`AgentPlatformBackend`**, `backendType`
+**`AGENT_PLATFORM`**, vùng **`global`**, và SDK 12.18 export cả hai lớp nên nhánh rơi về
+`VertexAIBackend` chưa bao giờ chạy tới. App ra khỏi chế độ thử, màn đăng nhập Firebase
+thật, không lỗi khởi tạo nào.
+
+**Lượt gọi model thật thì chưa.** Hai thứ chặn, và không cái nào sửa được bằng code:
+
+1. **Thiếu `VITE_FIREBASE_APPCHECK_SITE_KEY`.** `apps:sdkconfig` không trả về nó, và
+   firebase-tools **không có nhóm lệnh `appcheck`** nào cả — chỉ lấy được từ Firebase
+   Console → App Check. Project đang enforce, nên chưa có key thì Gemini trả 403.
+2. **Phải đăng nhập bằng tài khoản thật.**
+
+Nên nhánh Vertex mới chứng minh được tới lớp dựng backend, chưa tới câu trả lời của model.
+Người đầu tiên có đủ hai thứ trên nên thử cả ba tính năng — Trợ lý AI, Cẩm nang, Dịch —
+rồi cập nhật lại dòng này.
+
 ## Những chỗ đã sập — đừng dẫm lại
 
 **`Number(null)` là `0`, và `0` là một toạ độ hợp lệ.** `cleanStop` từng viết
@@ -658,8 +677,8 @@ test những trường đã nghĩ tới.
 
 ## Git
 
-Nhánh làm việc: `claude/project-review-action-items-aed835`, merge vào `main` bằng
-fast-forward. `main` được checkout ở `E:/Git/SmartTrip2` — **kiểm tra worktree đó sạch
+Nhánh làm việc đổi theo từng phiên (gần nhất: `claude/goong-gemini-map-planning-94785c`),
+merge vào `main` bằng fast-forward. `main` được checkout ở `E:/Git/SmartTrip2` — **kiểm tra worktree đó sạch
 trước khi merge**, đã từng có một phiên khác để công việc dở dang ở đấy.
 
 Worktree phụ nằm trong `.claude/worktrees/`. Mỗi cái cần `npm install` riêng — chúng
