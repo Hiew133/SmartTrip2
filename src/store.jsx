@@ -59,7 +59,7 @@ const defaultState = {
   pendingTripId: readSharedTripId(),
 
   // trip detail
-  tripTab: 'itin',           // itin | budget | members | guide
+  tripTab: 'itin',           // itin | budget | members | guide | assist
   day: 0,
   focusIdx: -1,
 
@@ -74,12 +74,20 @@ const defaultState = {
   // AI desk
   aiPhase: 'form',           // form | loading | result
   aiDest: 'Đà Nẵng – Hội An, Việt Nam',
+  /* Two dates rather than a day count: a trip is booked by the dates people
+     already hold, and the number of days falls out of them. Keeping the count
+     as its own field meant it could disagree with the dates written onto the
+     trip afterwards. */
   aiDate: '2026-09-12',
+  aiEndDate: '2026-09-15',
   aiBudget: '4.000.000 ₫',
-  aiDaysN: 4,
   aiParty: 'Nhóm bạn',
+  /* Typed, not derived from aiParty. "Nhóm bạn" was silently four people, and
+     the budget for the whole group was computed from that guess. */
+  aiPartySize: 4,
   aiPace: 'Cân bằng',
   aiStyles: { 'Ẩm thực': true, 'Biển đảo': true },
+  aiStyleOther: '',          // free text behind the "Khác" chip
   aiDraft: null,
   aiError: '',
 

@@ -68,6 +68,28 @@ export const startOfToday = () => {
   return d;
 };
 
+/**
+ * How many days a trip covers, counting both ends — 12/09 to 15/09 is 4 days,
+ * not 3, because you are there on all four.
+ *
+ * Null when either date is missing or the trip ends before it starts, so the
+ * caller has one answer to check instead of a number it has to distrust.
+ */
+export function dayCountBetween(startISO, endISO) {
+  const a = parseISO(startISO);
+  const b = parseISO(endISO);
+  if (!a || !b) return null;
+  const n = Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
+  return n >= 1 ? n : null;
+}
+
+/* A ceiling on what the AI desk will plan in one go. Not a limit on how long a
+   trip may be — you can keep adding days by hand, and the assistant inside a
+   trip adds them one at a time. It is a limit on one request: past a fortnight
+   the model stops writing an itinerary and starts writing a brochure, and the
+   answer gets long enough to cost real money for something nobody reads. */
+export const AI_MAX_DAYS = 14;
+
 /** Whole days from today until departure; null when the trip has no start date. */
 export function daysUntil(startISO) {
   const a = parseISO(startISO);

@@ -9,6 +9,20 @@ export const aiAvailable = firebaseEnabled;
    not coaxing. Everything it sends back is still treated as untrusted input:
    it goes through the same sanitiser as a Firestore document before it is
    allowed anywhere near the trip model. */
+/* One stop, written once. The itinerary asks for a whole trip of these and the
+   in-trip assistant asks for a single day of them, and the two must not drift:
+   both answers land in the same `cleanStop` and the same day document. */
+const stopSchema = (Schema) => Schema.object({
+  properties: {
+    time: Schema.string({ description: 'Giờ bắt đầu, định dạng HH:MM 24 giờ' }),
+    name: Schema.string({ description: 'Tên địa điểm có thật' }),
+    note: Schema.string({ description: 'Một mẹo thực tế ngắn, tiếng Việt' }),
+    cost: Schema.number({ description: 'Chi phí ước tính cho CẢ NHÓM, đơn vị VND' }),
+    lat: Schema.number({ description: 'Vĩ độ thật của địa điểm' }),
+    lng: Schema.number({ description: 'Kinh độ thật của địa điểm' }),
+  },
+});
+
 const itinerarySchema = (Schema) => Schema.object({
   properties: {
     title: Schema.string({ description: 'Tên ngắn gọn cho chuyến đi, tiếng Việt' }),
@@ -17,29 +31,21 @@ const itinerarySchema = (Schema) => Schema.object({
       items: Schema.object({
         properties: {
           place: Schema.string({ description: 'Khu vực chính của ngày, ví dụ "Hội An"' }),
-          stops: Schema.array({
-            items: Schema.object({
-              properties: {
-                time: Schema.string({ description: 'Giờ bắt đầu, định dạng HH:MM 24 giờ' }),
-                name: Schema.string({ description: 'Tên địa điểm có thật' }),
-                note: Schema.string({ description: 'Một mẹo thực tế ngắn, tiếng Việt' }),
-                cost: Schema.number({ description: 'Chi phí ước tính cho CẢ NHÓM, đơn vị VND' }),
-                lat: Schema.number({ description: 'Vĩ độ thật của địa điểm' }),
-                lng: Schema.number({ description: 'Kinh độ thật của địa điểm' }),
-              },
-            }),
-          }),
+          stops: Schema.array({ items: stopSchema(Schema) }),
         },
       }),
     }),
   },
 });
 
-function buildPrompt({ dest, date, dayCount, party, partySize, pace, styles, budgetPerPerson }) {
+function buildPrompt({ dest, date, endDate, dayCount, party, partySize, pace, styles, budgetPerPerson }) {
   const style = styles.length ? styles.join(', ') : 'không có yêu cầu riêng';
   return [
     `Soạn lịch trình du lịch ${dayCount} ngày tới ${dest}.`,
-    `Khởi hành ngày ${date || 'chưa xác định'}. Đi cùng: ${party} (${partySize} người).`,
+    endDate
+      ? `Đi từ ngày ${date} đến hết ngày ${endDate}, tính cả hai ngày đó.`
+      : `Khởi hành ngày ${date || 'chưa xác định'}.`,
+    `Đi cùng: ${party} (${partySize} người).`,
     `Nhịp độ: ${pace}. Phong cách quan tâm: ${style}.`,
     budgetPerPerson > 0
       ? `Ngân sách khoảng ${budgetPerPerson.toLocaleString('vi-VN')} ₫ mỗi người, tức khoảng ${(budgetPerPerson * partySize).toLocaleString('vi-VN')} ₫ cho cả nhóm. Tổng chi phí các điểm dừng nên nằm trong mức đó.`
@@ -187,6 +193,138 @@ export async function generateItinerary(input) {
     title: typeof parsed?.title === 'string' && parsed.title.trim() ? parsed.title.trim() : input.dest,
     summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
     days,
+  };
+}
+
+/* ── the assistant inside a trip ────────────────────────────────────────────
+
+   The AI desk writes a trip from nothing. This writes one day at a time into a
+   trip that already exists, which is a different job: the answer has to fit
+   what is already there, so the current day goes into the prompt and comes
+   back rewritten rather than replaced by something unrelated.
+
+   Deliberately one day per request. A model handed a whole trip and told to
+   "add a coffee stop" will quietly reflow days nobody asked about, and the
+   person applying it cannot see what moved. One day is a change somebody can
+   read before they accept it. */
+
+const dayPlanSchema = (Schema) => Schema.object({
+  properties: {
+    place: Schema.string({ description: 'Khu vực chính của ngày, ví dụ "Hội An"' }),
+    summary: Schema.string({ description: 'Một câu nói rõ đã đổi những gì so với ngày cũ, tiếng Việt' }),
+    stops: Schema.array({ items: stopSchema(Schema) }),
+  },
+});
+
+const describeStops = (stops) => (stops.length
+  ? stops.map((s) => `- ${s.time} · ${s.name}${s.note ? ` (${s.note})` : ''}`
+    + `${s.cost ? ` · ${s.cost} VND` : ''}`).join('\n')
+  : '(ngày này chưa có điểm dừng nào)');
+
+function revisePrompt({ mode, dest, dayPlace, dayLabel, stops, request, partySize, pace, budgetPerPerson }) {
+  const head = mode === 'add'
+    ? [
+      `Soạn thêm MỘT ngày mới cho chuyến đi tới ${dest}.`,
+      `Ngày này sẽ là ${dayLabel}.`,
+      '',
+      'Những ngày đã có trong chuyến, để không lặp lại điểm dừng:',
+      stops,
+    ]
+    : [
+      `Sửa lại MỘT ngày trong lịch trình chuyến đi tới ${dest}.`,
+      `Ngày đang sửa: ${dayPlace || dayLabel}.`,
+      '',
+      'Các điểm dừng hiện tại của ngày đó:',
+      stops,
+    ];
+
+  return [
+    ...head,
+    '',
+    `Yêu cầu của người dùng: "${request}"`,
+    '',
+    `Nhóm ${partySize} người, nhịp độ ${pace}.`,
+    budgetPerPerson > 0
+      ? `Ngân sách khoảng ${budgetPerPerson.toLocaleString('vi-VN')} ₫ mỗi người cho cả chuyến.`
+      : 'Không có ràng buộc ngân sách cụ thể.',
+    '',
+    'Yêu cầu về câu trả lời:',
+    '- Trả về TOÀN BỘ danh sách điểm dừng của ngày đó sau khi sửa, không phải chỉ phần thêm.',
+    mode === 'add'
+      ? '- 3 đến 5 điểm dừng cho ngày mới.'
+      : '- Giữ nguyên những điểm dừng người dùng không đụng tới, kể cả giờ và ghi chú của chúng.',
+    '- Chỉ dùng địa điểm có thật, kèm toạ độ lat/lng thật của địa điểm đó.',
+    '- Giờ trong ngày phải tăng dần và hợp lý với giờ mở cửa, bữa ăn đúng buổi.',
+    '- cost là chi phí cho cả nhóm bằng VND, dùng 0 nếu miễn phí.',
+    '- summary nói rõ bạn vừa đổi gì, để người dùng đọc là biết có nên áp dụng không.',
+    '- Toàn bộ chữ viết bằng tiếng Việt.',
+  ].join('\n');
+}
+
+/** Demo-mode answer: honest about being a sample, still the right shape. */
+function mockDayPlan({ mode, dayPlace, stops }) {
+  const kept = stops.slice(0, 3).map((s) => newStop({ ...s, id: uid('stop') }));
+  const extra = newStop({
+    time: '16:30',
+    name: 'Điểm dừng do trợ lý đề xuất',
+    note: 'Chế độ thử chưa gọi Gemini — đây là bản dựng sẵn để xem bố cục.',
+    cost: 0,
+  });
+  return {
+    place: mode === 'add' ? 'Ngày mới (bản mẫu)' : (dayPlace || 'Ngày đã sửa'),
+    summary: 'Bản mẫu ở chế độ thử — chưa nối Firebase AI Logic nên chưa hỏi được mô hình.',
+    items: [...kept, extra],
+  };
+}
+
+/**
+ * Rewrite one day, or write a new one, from a request in the person's own
+ * words. Returns `{ place, summary, items }` already sanitised — the caller
+ * shows it for approval and only then writes it to the trip.
+ *
+ * `mode` is 'edit' (rewrite `stops`) or 'add' (a new day; `stops` is then the
+ * rest of the trip, passed in so the model does not repeat itself).
+ */
+export async function reviseDayPlan({
+  mode = 'edit', dest, dayPlace, dayLabel, stops = [], request,
+  partySize = 1, pace = 'Cân bằng', budgetPerPerson = 0,
+}) {
+  const asked = String(request ?? '').trim();
+  if (!asked) throw new Error('Chưa biết bạn muốn đổi gì. Viết một câu mô tả giúp mình.');
+
+  if (!firebaseEnabled) {
+    await new Promise((r) => setTimeout(r, 800));   // keep the skeleton visible
+    return mockDayPlan({ mode, dayPlace, stops });
+  }
+
+  const parsed = await askModel({
+    schema: dayPlanSchema,
+    prompt: revisePrompt({
+      mode,
+      dest,
+      dayPlace,
+      dayLabel,
+      stops: describeStops(stops),
+      request: asked,
+      partySize,
+      pace,
+      budgetPerPerson,
+    }),
+    temperature: 0.7,               // between the guidebook's facts and a fresh plan
+    whenUnreadable: 'Trợ lý trả về dữ liệu không đọc được. Thử viết lại yêu cầu giúp mình.',
+  });
+
+  const items = (Array.isArray(parsed?.stops) ? parsed.stops : [])
+    .map((s) => cleanStop({ ...s, id: uid('stop') }))
+    .filter(Boolean)
+    .map((s) => newStop(s));
+
+  if (!items.length) throw new Error('Trợ lý chưa đề xuất được điểm dừng nào. Thử viết yêu cầu cụ thể hơn.');
+
+  return {
+    place: typeof parsed?.place === 'string' && parsed.place.trim() ? parsed.place.trim() : (dayPlace || ''),
+    summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
+    items,
   };
 }
 

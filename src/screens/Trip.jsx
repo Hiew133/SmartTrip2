@@ -8,9 +8,14 @@ import ItineraryTab from './trip/ItineraryTab.jsx';
 import BudgetTab from './trip/BudgetTab.jsx';
 import MembersTab from './trip/MembersTab.jsx';
 import GuideTab from './trip/GuideTab.jsx';
+import AssistantTab from './trip/AssistantTab.jsx';
 
+/* `edit` marks a tab that only exists for people who can change the trip. The
+   assistant is one: everything it offers ends in a write, so showing it to a
+   viewer would be a screen full of buttons that all fail. */
 const TABS = [
   ['itin', 'Lịch trình & bản đồ'],
+  ['assist', 'Trợ lý AI', 'edit'],
   ['budget', 'Ngân sách & chia tiền'],
   ['members', 'Thành viên'],
   ['guide', 'Cẩm nang bản địa'],
@@ -52,6 +57,12 @@ export default function Trip() {
   const { core, total } = computeBudget(trip);
   const stops = stopCount(trip);
   const status = tripStatus(trip);
+
+  /* tripTab is remembered across trips, and a viewer can land on a trip while
+     it still says "assist" from an editable one — fall back rather than render
+     a blank page under a tab strip that no longer has that tab. */
+  const tabs = TABS.filter(([, , needs]) => needs !== 'edit' || editable);
+  const tab = tabs.some(([key]) => key === state.tripTab) ? state.tripTab : 'itin';
 
   return (
     <div className="st-page" style={{ paddingTop: 24 }}>
@@ -126,20 +137,21 @@ export default function Trip() {
       </header>
 
       <nav className="st-tabs" aria-label="Khu vực của chuyến đi">
-        {TABS.map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button key={key} type="button"
-            className={`st-tab ${state.tripTab === key ? 'active' : ''}`}
-            aria-current={state.tripTab === key ? 'true' : undefined}
+            className={`st-tab ${tab === key ? 'active' : ''}`}
+            aria-current={tab === key ? 'true' : undefined}
             onClick={() => patch({ tripTab: key })}>
             {label}
           </button>
         ))}
       </nav>
 
-      {state.tripTab === 'itin' && <ItineraryTab trip={trip} editable={editable} />}
-      {state.tripTab === 'budget' && <BudgetTab trip={trip} editable={editable} />}
-      {state.tripTab === 'members' && <MembersTab trip={trip} role={role} />}
-      {state.tripTab === 'guide' && <GuideTab trip={trip} editable={editable} />}
+      {tab === 'itin' && <ItineraryTab trip={trip} editable={editable} />}
+      {tab === 'assist' && <AssistantTab trip={trip} />}
+      {tab === 'budget' && <BudgetTab trip={trip} editable={editable} />}
+      {tab === 'members' && <MembersTab trip={trip} role={role} />}
+      {tab === 'guide' && <GuideTab trip={trip} editable={editable} />}
     </div>
   );
 }

@@ -12,7 +12,7 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm test           # logic thuần — 110 ca, vài giây, không cần gì ngoài node
+npm test           # logic thuần — 115 ca, vài giây, không cần gì ngoài node
 npm run test:rules # kiểm thử Security Rules trên emulator — 44 ca
 ```
 
@@ -156,7 +156,7 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Backend cho Gemini | Vertex AI mặc định — đã xác nhận dựng đúng `AgentPlatformBackend` / `AGENT_PLATFORM` / vùng `global` trên project thật; **lượt gọi model chưa thử** (xem dưới) |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
 | Test Security Rules | ✅ 44/44 pass trên emulator (quyền + shape dữ liệu ghi vào) |
-| Test logic thuần | ✅ 110/110 pass, `npm test`, không cần emulator |
+| Test logic thuần | ✅ 115/115 pass, `npm test`, không cần emulator |
 | CI | ✅ `.github/workflows/ci.yml` — lint + unit + build, rules ở job riêng có JDK 21 |
 | Tìm kiếm địa điểm | ✅ Nominatim mặc định (không cần khoá), Goong khi có `VITE_GOONG_API_KEY` |
 | Bản đồ nền Goong | ✅ vector tile qua MapLibre khi có `VITE_GOONG_MAPTILES_KEY`, tự rơi về OSM |
@@ -166,7 +166,8 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Gỡ / rời thành viên | ✅ chủ gỡ được người khác và huỷ được lời mời; người khác tự rời được |
 | Xoá chuyến đi | ✅ chủ xoá được, xoá luôn `days`, `expenses` và `guide` |
 | Liên kết chia sẻ `/t/{id}` | ✅ mở đúng chuyến, giữ được qua bước đăng nhập |
-| Cẩm nang bản địa | ✅ tab thứ tư trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
+| Cẩm nang bản địa | ✅ một tab trong chuyến đi, một document mỗi điểm đến, có bản lưu ngoại tuyến |
+| Trợ lý trong chuyến đi | ✅ tab riêng — sửa một ngày hoặc thêm ngày mới, xem trước rồi mới ghi |
 | Sổ tay dịch | ✅ màn `Dịch` trên nav, cache trong máy nên mở lại không tốn lượt gọi AI |
 
 > **`.env.local` không có trong git.** Máy nào chưa có thì app chạy **chế độ thử**:
@@ -602,6 +603,55 @@ thật, không lỗi khởi tạo nào.
 Nên nhánh Vertex mới chứng minh được tới lớp dựng backend, chưa tới câu trả lời của model.
 Người đầu tiên có đủ hai thứ trên nên thử cả ba tính năng — Trợ lý AI, Cẩm nang, Dịch —
 rồi cập nhật lại dòng này.
+
+## Hai trợ lý, hai việc khác nhau
+
+`screens/AIDesk.jsx` viết một chuyến đi từ con số không. `screens/trip/AssistantTab.jsx`
+sửa một chuyến đã có. Cùng gọi `askModel`, nhưng đừng gộp lại: cái sau phải nhét lịch
+trình hiện tại vào prompt và **trả về đúng một ngày**, cái trước thì không có gì để nhét.
+
+### Trợ lý trong chuyến: đề xuất, không tự ghi
+
+Không có đường nào từ câu trả lời của model thẳng vào Firestore. `reviseDayPlan` trả về
+`{ place, summary, items }` đã làm sạch, component hiện ra cho người đọc, và chỉ nút *Áp
+dụng* mới gọi `updateDay` / `addDay`. Một model sửa lịch trình tại chỗ là một model lặng
+lẽ dời cái nhà hàng người ta đã đặt bàn.
+
+**Một ngày mỗi lần, có chủ ý.** Đưa cả chuyến rồi bảo "thêm một quán cà phê" thì model sẽ
+xếp lại cả những ngày không ai hỏi tới, mà người bấm nút không thấy được cái gì vừa đổi.
+Một ngày là thay đổi vừa một màn hình, đọc hết được trước khi đồng ý.
+
+**Nhãn "mới" là một cái diff.** `AssistantTab` so tên điểm dừng trả về với tên đang có
+trong ngày; cái nào chưa từng có thì đánh dấu. Không có nó thì "Áp dụng" là một cú nhảy
+vào bóng tối, vì bản trả về là **toàn bộ** danh sách chứ không phải phần thêm.
+
+Hai chi tiết đi kèm:
+
+- **Chế độ `add` gửi cả chuyến đi vào prompt**, không phải để sửa nó mà để ngày mới không
+  lặp lại điểm dừng đã có. Chế độ `edit` chỉ gửi đúng ngày đang sửa.
+- **Tab này chỉ hiện với người có quyền sửa.** Mọi thứ nó làm đều kết thúc bằng một lần
+  ghi, nên với người chỉ xem thì đó là một màn hình toàn nút sẽ báo lỗi. `tripTab` được
+  nhớ giữa các chuyến, nên `Trip.jsx` phải rơi về `itin` khi tab đang nhớ không còn tồn
+  tại — nếu không, người chỉ xem gặp một trang trắng dưới thanh tab.
+
+### Form của bàn soạn: hai ngày, và một con số gõ tay
+
+`aiDaysN` đã bị bỏ. Số ngày **suy ra** từ ngày khởi hành và ngày kết thúc bằng
+`dayCountBetween()` trong `data.js` — đếm cả hai đầu, 12/09→15/09 là **4** ngày. Giữ số
+ngày thành một trường riêng nghĩa là nó có ngày lệch với chính hai cái ngày được ghi vào
+chuyến đi ngay sau đó.
+
+`AI_MAX_DAYS` (14) chặn **một lần soạn**, không chặn độ dài chuyến đi: quá hai tuần thì
+model thôi viết lịch trình và bắt đầu viết brochure. Muốn dài hơn thì thêm ngày bằng trợ
+lý trong chuyến.
+
+Số người là **ô nhập**, không suy ra từ chip "Đi cùng" nữa. Chip chỉ điền sẵn con số, gõ
+đè lên lúc nào cũng được — "Nhóm bạn" không phải lúc nào cũng bốn người, mà ngân sách cả
+nhóm tính từ đúng con số đó.
+
+Chip **"Khác…"** không nằm trong `STYLE_CHIPS`, để nó không bao giờ bị gửi đi như một
+phong cách. Bật nó mới hiện ô chữ, và bật mà bỏ trống thì form chặn lại trước khi tốn một
+lượt gọi model.
 
 ## Những chỗ đã sập — đừng dẫm lại
 

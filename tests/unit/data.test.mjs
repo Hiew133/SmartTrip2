@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  dayLabel, daysUntil, first, fmt, formatRange, hasCoords, parseISO,
+  AI_MAX_DAYS, dayCountBetween, dayLabel, daysUntil, first, fmt, formatRange, hasCoords, parseISO,
   stopCount, tripStatus, tripTotal,
 } from '../../src/data.js';
 
@@ -90,4 +90,40 @@ test('money and names render the way a Vietnamese reader expects', () => {
   assert.equal(first('  Lan   Phạm '), 'Lan');
   assert.equal(first(''), '—');
   assert.equal(first(null), '—');
+});
+
+/* ── how long a trip is ─────────────────────────────────────────────────── */
+
+/* The AI desk asks for two dates and works the day count out from them, so a
+   wrong answer here becomes a trip with the wrong number of days in it. */
+
+test('a trip covers both of its end days', () => {
+  assert.equal(dayCountBetween('2026-09-12', '2026-09-15'), 4);   // not 3
+  assert.equal(dayCountBetween('2026-09-12', '2026-09-12'), 1);   // there and back in a day
+});
+
+test('a trip that ends before it starts has no length', () => {
+  assert.equal(dayCountBetween('2026-09-15', '2026-09-12'), null);
+});
+
+test('a missing date is not a zero-day trip', () => {
+  assert.equal(dayCountBetween(null, '2026-09-15'), null);
+  assert.equal(dayCountBetween('2026-09-12', null), null);
+  assert.equal(dayCountBetween('', ''), null);
+  assert.equal(dayCountBetween('hôm nào đó', '2026-09-15'), null);
+  assert.equal(dayCountBetween(undefined, undefined), null);
+});
+
+test('counting survives a month, a year and a daylight-saving boundary', () => {
+  assert.equal(dayCountBetween('2026-01-30', '2026-02-02'), 4);
+  assert.equal(dayCountBetween('2026-12-30', '2027-01-02'), 4);
+  // northern-hemisphere clock change: still whole days, not 3.958…
+  assert.equal(dayCountBetween('2026-03-28', '2026-03-31'), 4);
+  assert.equal(dayCountBetween('2028-02-27', '2028-03-01'), 4);   // leap year
+});
+
+test('the AI desk ceiling is a real number it can compare against', () => {
+  assert.equal(typeof AI_MAX_DAYS, 'number');
+  assert.ok(AI_MAX_DAYS >= 7 && AI_MAX_DAYS <= 31);
+  assert.equal(dayCountBetween('2026-09-01', '2026-09-14'), AI_MAX_DAYS);
 });

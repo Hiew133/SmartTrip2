@@ -20,7 +20,7 @@ npm run test:rules # test Security Rules trên emulator (cần JDK 21+)
 |---|---|
 | Đăng nhập / Đăng ký | Firebase Auth: Google + Email/Password (chế độ thử khi chưa nối Firebase) |
 | Chuyến đi của tôi | Danh sách chuyến đi dạng card, tìm kiếm & lọc theo trạng thái, tạo chuyến trống |
-| Chi tiết chuyến đi | 4 tab: **Lịch trình & bản đồ**, **Ngân sách & chia tiền**, **Thành viên**, **Cẩm nang bản địa** |
+| Chi tiết chuyến đi | 5 tab: **Lịch trình & bản đồ**, **Trợ lý AI**, **Ngân sách & chia tiền**, **Thành viên**, **Cẩm nang bản địa** |
 | Dịch | Sổ tay dịch: gõ câu tiếng Việt, đưa màn hình cho người bản địa đọc |
 | Trợ lý AI | Form soạn lịch trình → loading → bản nháp đúng số ngày đã chọn |
 
@@ -92,7 +92,13 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
 - **Đồng bộ realtime** qua Firestore — người khác sửa lịch trình hay thêm khoản chi thì màn hình
   của bạn tự cập nhật, không cần tải lại.
 - **Trợ lý AI thật** bằng Firebase AI Logic (Gemini) với structured output, tạo được chuyến đi
-  mới thẳng từ bản nháp.
+  mới thẳng từ bản nháp. Form hỏi **ngày khởi hành và ngày kết thúc** rồi tự suy ra số ngày,
+  **số người gõ tay** (chip "Cặp đôi", "Nhóm bạn"… chỉ là lối tắt điền sẵn con số), và phong
+  cách có ô **"Khác"** để tự viết thứ bạn quan tâm.
+- **Trợ lý ngay trong chuyến đi** — tab thứ hai của mỗi chuyến. Nói bằng lời thường
+  ("thêm quán cà phê buổi chiều", "đổi bữa trưa sang món chay", "một ngày đi Bà Nà"), trợ lý
+  soạn lại **đúng một ngày** rồi đưa xem trước, đánh dấu **mới** vào những điểm dừng chưa có.
+  Không gì được ghi vào chuyến đi cho tới khi bạn bấm áp dụng.
 - Mọi thứ đọc từ backend đều đi qua bộ kiểm tra shape, nên dữ liệu hỏng không làm sập app;
   khi chưa nối Firebase thì dùng localStorage (`smarttrip-v2`).
 
@@ -345,12 +351,12 @@ src/
     places.js          # gọi mạng cho tìm địa điểm (Nominatim hoặc Goong)
     maps.js            # gọi mạng cho bản đồ nền, đường đi và ma trận khoảng cách (Goong)
     offline.js         # bản lưu của riêng máy: cẩm nang và sổ tay dịch
-    ai.js              # gọi Gemini qua Firebase AI Logic — Vertex AI (hoặc mock)
+    ai.js              # gọi Gemini qua Firebase AI Logic — lịch trình, sửa một ngày, cẩm nang, dịch
     index.js           # chọn repository theo cấu hình
   components/          # ui.jsx (Seg, Avatar, En, icons), MapView, PlaceSearch,
                        # TripPrintSheet, ExpenseDialog, ErrorBoundary, useFieldDraft,
                        # useRoadRoute
-  screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab|GuideTab),
+  screens/             # Login, Trips, Trip (+ trip/ItineraryTab|AssistantTab|BudgetTab|MembersTab|GuideTab),
                        # AIDesk, Translate, Profile
 tests/
   unit/*.test.mjs            # logic thuần — `npm test`, không cần emulator

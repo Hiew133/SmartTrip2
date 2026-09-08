@@ -1,14 +1,31 @@
 import { useState } from 'react';
 import { useApp } from '../store.jsx';
-import { fmt, parseISO } from '../data.js';
+import { AI_MAX_DAYS, dayCountBetween, fmt, parseISO } from '../data.js';
 import { aiAvailable, generateItinerary } from '../backend/index.js';
 import { ArrowRight, Compass, En, Seg } from '../components/ui.jsx';
 
 const STYLE_CHIPS = ['Ẩm thực', 'Biển đảo', 'Văn hoá', 'Nghỉ dưỡng', 'Chụp ảnh', 'Khám phá đêm'];
+
+/* The chips are a shortcut for the number beside them, not the source of it.
+   Picking one fills the count in; typing over the count is always allowed,
+   because "Nhóm bạn" is not always four people and the budget for the whole
+   group is computed from whatever that number really is. */
 const PARTY_SIZE = { 'Một mình': 1, 'Cặp đôi': 2, 'Nhóm bạn': 4, 'Gia đình': 4 };
+
+/** The chip that reveals a free-text box; kept out of STYLE_CHIPS so it can never be sent as a style. */
+const OTHER = 'Khác…';
 
 const parseAmount = (raw) => parseInt(String(raw ?? '').replace(/[^\d]/g, ''), 10) || 0;
 
+/** Whatever the person typed behind "Khác", as separate styles. */
+const otherStyles = (raw) => String(raw ?? '')
+  .split(/[,;\n]/)
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/* The trip's end date follows the days actually created, not the dates asked
+   for: a model that returns three days for a four-day request would otherwise
+   leave the trip claiming a day that has nothing in it. */
 const addDays = (iso, n) => {
   const d = parseISO(iso);
   if (!d) return null;
@@ -55,24 +72,51 @@ export default function AIDesk() {
      the whole way there — a second press was making a second trip. */
   const [saving, setSaving] = useState(false);
 
-  const party = PARTY_SIZE[state.aiParty] ?? 1;
+  const party = Math.max(1, Math.round(Number(state.aiPartySize) || 1));
   const budgetPerPerson = parseAmount(state.aiBudget);
   const budgetTotal = budgetPerPerson * party;
   const draft = state.aiDraft;
   const total = draft ? draftTotal(draft.days) : 0;
   const slack = draft && budgetTotal > 0 ? Math.round(((budgetTotal - total) / budgetTotal) * 100) : null;
 
+  /* The day count is read off the two dates rather than picked separately, so
+     it cannot disagree with the dates that get written onto the trip. */
+  const dayCount = dayCountBetween(state.aiDate, state.aiEndDate);
+  const styles = [
+    ...STYLE_CHIPS.filter((c) => state.aiStyles[c]),
+    ...(state.aiStyles[OTHER] ? otherStyles(state.aiStyleOther) : []),
+  ];
+
+  /* Said before the request goes out, not after it comes back wrong. */
+  const problem = () => {
+    if (!state.aiDest.trim()) return 'Chưa có điểm đến. Nhập nơi bạn muốn tới giúp mình.';
+    if (!state.aiDate || !state.aiEndDate) return 'Chọn cả ngày khởi hành và ngày kết thúc giúp mình.';
+    if (dayCount === null) return 'Ngày kết thúc đang trước ngày khởi hành.';
+    if (dayCount > AI_MAX_DAYS) {
+      return `Chuyến ${dayCount} ngày là hơi dài cho một lần soạn. Chọn tối đa ${AI_MAX_DAYS} ngày, `
+        + 'rồi dùng trợ lý trong chuyến đi để thêm ngày sau.';
+    }
+    if (state.aiStyles[OTHER] && !otherStyles(state.aiStyleOther).length) {
+      return 'Bạn đã chọn "Khác" — viết vào ô bên cạnh phong cách bạn muốn.';
+    }
+    return '';
+  };
+
   const generate = async () => {
+    const bad = problem();
+    if (bad) { patch({ aiError: bad }); return; }
+
     patch({ aiPhase: 'loading', aiError: '', aiDraft: null });
     try {
       const result = await generateItinerary({
         dest: state.aiDest,
         date: state.aiDate,
-        dayCount: state.aiDaysN,
+        endDate: state.aiEndDate,
+        dayCount,
         party: state.aiParty,
         partySize: party,
         pace: state.aiPace,
-        styles: Object.keys(state.aiStyles).filter((k) => state.aiStyles[k]),
+        styles,
         budgetPerPerson,
       });
       patch({ aiDraft: result, aiPhase: 'result' });
@@ -89,7 +133,7 @@ export default function AIDesk() {
       title: draft.title || state.aiDest.split(',')[0].trim() || 'Chuyến đi mới',
       seed: `ai-${Math.random().toString(36).slice(2, 8)}`,
       alt: 'Ảnh bìa chuyến đi do AI soạn',
-      body: draft.summary || `Bản nháp AI · ${state.aiParty} · nhịp ${state.aiPace.toLowerCase()}.`,
+      body: draft.summary || `Bản nháp AI · ${state.aiParty} (${party} người) · nhịp ${state.aiPace.toLowerCase()}.`,
       startDate: state.aiDate || null,
       endDate: addDays(state.aiDate, draft.days.length - 1),
       plan: budgetTotal,
@@ -124,9 +168,20 @@ export default function AIDesk() {
               onChange={(e) => patch({ aiDest: e.target.value })} />
           </div>
           <div className="field">
-            <label htmlFor="ai-date">Ngày khởi hành</label>
+            <label htmlFor="ai-date">Ngày khởi hành<En> · Start</En></label>
             <input className="input" id="ai-date" type="date" value={state.aiDate}
               onChange={(e) => patch({ aiDate: e.target.value })} />
+          </div>
+          <div className="field">
+            <label htmlFor="ai-enddate">Ngày kết thúc<En> · End</En></label>
+            <input className="input" id="ai-enddate" type="date" value={state.aiEndDate}
+              min={state.aiDate || undefined}
+              onChange={(e) => patch({ aiEndDate: e.target.value })} />
+            <span className="text-muted" style={{ fontSize: 12.5, fontWeight: 600, marginTop: 6, display: 'block' }}>
+              {dayCount === null
+                ? 'Chọn hai ngày để biết chuyến đi dài bao lâu'
+                : `${dayCount} ngày, tính cả ngày về`}
+            </span>
           </div>
           <div className="field">
             <label htmlFor="ai-budget">Ngân sách mỗi người</label>
@@ -134,15 +189,23 @@ export default function AIDesk() {
               onChange={(e) => patch({ aiBudget: e.target.value })} />
           </div>
           <div className="field">
-            <label>Số ngày</label>
-            <Seg ariaLabel="Số ngày" options={[2, 3, 4, 5].map((n) => ({
-              label: `${n} ngày`, active: state.aiDaysN === n, onClick: () => patch({ aiDaysN: n }),
-            }))} />
+            <label htmlFor="ai-people">Số người</label>
+            <input className="input" id="ai-people" type="number" min="1" max="40"
+              inputMode="numeric" value={state.aiPartySize}
+              onChange={(e) => patch({ aiPartySize: e.target.value.replace(/[^\d]/g, '') })}
+              onBlur={() => patch({ aiPartySize: party })} />
+            <span className="text-muted" style={{ fontSize: 12.5, fontWeight: 600, marginTop: 6, display: 'block' }}>
+              {budgetPerPerson > 0 ? `Cả nhóm khoảng ${fmt(budgetTotal)}` : 'Dùng để quy ngân sách ra cả nhóm'}
+            </span>
           </div>
-          <div className="field">
+          <div className="field st-full">
             <label>Đi cùng</label>
+            {/* Picking one fills in the number beside it; the number stays
+                editable, because a "Nhóm bạn" of six is still a nhóm bạn. */}
             <Seg ariaLabel="Đi cùng ai" options={Object.keys(PARTY_SIZE).map((p) => ({
-              label: p, active: state.aiParty === p, onClick: () => patch({ aiParty: p }),
+              label: p,
+              active: state.aiParty === p,
+              onClick: () => patch({ aiParty: p, aiPartySize: PARTY_SIZE[p] }),
               style: { padding: '7px 13px' },
             }))} />
           </div>
@@ -155,16 +218,26 @@ export default function AIDesk() {
           <div className="field st-full">
             <label>Phong cách chuyến đi<En> · Travel style</En></label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {STYLE_CHIPS.map((c) => {
+              {[...STYLE_CHIPS, OTHER].map((c) => {
                 const on = !!state.aiStyles[c];
                 return (
                   <button key={c} type="button" className={`st-chip ${on ? 'active' : ''}`} aria-pressed={on}
+                    aria-controls={c === OTHER ? 'ai-style-other' : undefined}
                     onClick={() => patch((s) => ({ aiStyles: { ...s.aiStyles, [c]: !on } }))}>
                     {c}
                   </button>
                 );
               })}
             </div>
+            {/* Appears only once "Khác" is on, so the form stays short for the
+                people the six chips already describe. */}
+            {state.aiStyles[OTHER] && (
+              <input className="input" id="ai-style-other" style={{ marginTop: 10 }}
+                value={state.aiStyleOther} autoFocus
+                aria-label="Phong cách khác"
+                placeholder="vd: đi bộ đường dài, cà phê đặc sản, chợ phiên — cách nhau bằng dấu phẩy"
+                onChange={(e) => patch({ aiStyleOther: e.target.value })} />
+            )}
           </div>
           <div className="st-full" style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-primary" onClick={generate}>
@@ -178,14 +251,14 @@ export default function AIDesk() {
         </div>
       )}
 
-      {state.aiPhase === 'loading' && <DraftSkeleton days={state.aiDaysN} />}
+      {state.aiPhase === 'loading' && <DraftSkeleton days={dayCount ?? 3} />}
 
       {state.aiPhase === 'result' && draft && (
         <div style={{ marginTop: 34 }} className="st-rise">
           <div className="st-metarow" style={{ marginBottom: 20 }}>
             <span className="tag tag-accent">Bản nháp 1</span>
             <span className="tag tag-neutral">{draft.title}</span>
-            <span className="tag tag-neutral">{draft.days.length} ngày · {state.aiParty}</span>
+            <span className="tag tag-neutral">{draft.days.length} ngày · {state.aiParty} ({party} người)</span>
             <span className="tag tag-accent-2">≈ {fmt(total / party)}/người</span>
           </div>
           <div className="st-aicard">
