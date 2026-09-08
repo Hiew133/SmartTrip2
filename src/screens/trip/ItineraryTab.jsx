@@ -2,8 +2,11 @@ import { Suspense, lazy, useState } from 'react';
 import { useApp } from '../../store.jsx';
 import { dayLabel, fmt, hasCoords, newDay, newStop } from '../../data.js';
 import { byTime, isOutOfOrder, moveItem, optimizeRoute, routeLengthKm } from '../../itinerary.js';
+import { formatDuration } from '../../maps.js';
+import { basemap, roadDistance, roadRoutingAvailable } from '../../backend/maps.js';
 import { Check, ChevronDown, ChevronUp, En, Grip, Plus, Route, Seg } from '../../components/ui.jsx';
 import { useFieldDraft } from '../../components/useFieldDraft.js';
+import { useRoadRoute } from '../../components/useRoadRoute.js';
 import PlaceSearch from '../../components/PlaceSearch.jsx';
 /* Leaflet is 150 kB and only this tab needs it. People land on the trip list
    first, so loading it lazily takes it off the critical path for every screen
@@ -85,6 +88,7 @@ export default function ItineraryTab({ trip, editable }) {
   const [undo, setUndo] = useState(null);       // { dayId, items, label }
   const [editId, setEditId] = useState(null);
   const [confirmDay, setConfirmDay] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
 
   // state.day is UI state and the day list can shrink under it, so never index blindly
   const dayIdx = Math.min(Math.max(state.day, 0), Math.max(trip.days.length - 1, 0));
@@ -92,6 +96,12 @@ export default function ItineraryTab({ trip, editable }) {
   const daySpend = day ? day.items.reduce((s, i) => s + i.cost, 0) : 0;
 
   const place = useFieldDraft(day?.place, (v) => actions.updateDay(day.id, { place: v }));
+
+  /* The road through this day, when a Goong key is configured — one Direction
+     call per set of coordinates, cached by the hook until they change. Null
+     means the map draws the old dashed straight line, which is every case
+     without a key. */
+  const route = useRoadRoute(day?.items ?? []);
 
   const writeItems = (dayId, items) => actions.updateDay(dayId, { items });
 
@@ -170,10 +180,39 @@ export default function ItineraryTab({ trip, editable }) {
     patch({ focusIdx: -1 });
   };
 
+  /* Reorder against real driving distances when Goong can supply them, and say
+     which metric was used. `optimizeRoute` takes a synchronous distance
+     function, so the whole matrix is fetched first — that is exactly the seam
+     itinerary.js documents. Falling back is silent in the code and loud in the
+     toast: a route optimised on the wrong metric looks identical to a good one.
+
+     `day.items` is read after the await, but nothing here can change it in
+     between — the button is disabled for the duration. */
+  const optimize = async () => {
+    if (optimizing) return;
+    setOptimizing(true);
+    /* roadDistance answers null rather than throwing for every failure it
+       knows about, so the only thing this catch is for is the unforeseen —
+       and even then the straight-line reorder is the right thing to do. */
+    const distance = await roadDistance(day.items).catch(() => null);
+    setOptimizing(false);
+    const how = !roadRoutingAvailable() ? '' : distance ? ' theo đường bộ' : ' theo đường chim bay';
+    reorder(optimizeRoute(day.items, distance ?? undefined), `tối ưu tuyến đường${how}`, true);
+  };
+
   const outOfOrder = day ? isOutOfOrder(day.items) : false;
-  /* Straight-line, not driving distance — but a real number in kilometres,
-     which is what makes "Tối ưu tuyến đường" checkable by eye. */
-  const routeKm = day ? routeLengthKm(day.items) : 0;
+  /* Two numbers for the same day: what Goong measured along the roads, and the
+     straight-line fallback. Either is a real number in kilometres, which is
+     what makes "Tối ưu tuyến đường" checkable by eye. */
+  const straightKm = day ? routeLengthKm(day.items) : 0;
+  const km = (n) => (n < 10 ? n.toFixed(1) : String(Math.round(n)));
+
+  /* Whichever basemap actually rendered, which is not always the one this
+     build asked for: a bad Maptiles key drops MapView back to OSM, and the
+     caption has to follow it there. Seeded from the configuration so the
+     credit is right on the first paint too. */
+  const [drawnBy, setDrawnBy] = useState(basemap().kind);
+  const mapCredit = drawnBy === 'goong' ? 'Goong Maps' : 'OpenStreetMap';
 
   return (
     <div className="st-2col">
@@ -206,8 +245,9 @@ export default function ItineraryTab({ trip, editable }) {
           )}
           {editable && day && day.items.length > 2 && (
             <button type="button" className="btn btn-ghost" style={{ fontSize: 13 }}
-              onClick={() => reorder(optimizeRoute(day.items), 'tối ưu tuyến đường', true)}>
-              <Route width="15" height="15" />Tối ưu tuyến đường
+              disabled={optimizing} onClick={optimize}>
+              <Route width="15" height="15" />
+              {optimizing ? 'Đang đo đường…' : 'Tối ưu tuyến đường'}
             </button>
           )}
         </div>
@@ -257,7 +297,9 @@ export default function ItineraryTab({ trip, editable }) {
             </div>
             <p className="st-daysub">
               {dayLabel(trip.startDate, dayIdx)} · {day.items.length} điểm dừng · dự chi {fmt(daySpend)}
-              {routeKm >= 0.1 && ` · quãng đường ${routeKm < 10 ? routeKm.toFixed(1) : Math.round(routeKm)} km`}
+              {route?.km != null
+                ? ` · ${km(route.km)} km đường bộ${route.minutes != null ? ` · đi khoảng ${formatDuration(route.minutes)}` : ''}`
+                : straightKm >= 0.1 && ` · quãng đường ${km(straightKm)} km`}
               {day.items.length > 0 && ' — chạm để định vị trên bản đồ'}
               {day.items.length > 0 && editable && ', dùng nút ↑ ↓ hoặc kéo để đổi thứ tự'}
             </p>
@@ -368,10 +410,11 @@ export default function ItineraryTab({ trip, editable }) {
 
       <figure className="st-mapfig">
         <Suspense fallback={<div className="st-mapwrap" style={{ height: 580 }} />}>
-          <MapView stops={day?.items ?? []} focusIdx={state.focusIdx} style={{ height: 580 }} />
+          <MapView stops={day?.items ?? []} focusIdx={state.focusIdx}
+            routePath={route?.path ?? null} onBasemap={setDrawnBy} style={{ height: 580 }} />
         </Suspense>
         <figcaption style={{ marginTop: 10, fontSize: 12 }}>
-          Bản đồ © OpenStreetMap · ghim đang chọn đổi sang màu rêu
+          Bản đồ © {mapCredit} · ghim đang chọn đổi sang màu rêu
           <En> · tap a stop to locate it</En>
         </figcaption>
       </figure>

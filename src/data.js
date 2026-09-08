@@ -13,8 +13,13 @@ export const CATEGORIES = ['Đi lại', 'Lưu trú', 'Ăn uống', 'Vé tham qua
    an ordinary space the browser is free to wrap there, and in a narrow card it
    did — "16.000.000" on one line and a lone "₫" on the next, which reads as a
    layout accident every time. One character here fixes it in the stat tiles,
-   the tags, the expense table and the printed sheet at once. */
-export const fmt = (n) => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')} ₫`;
+   the tags, the expense table and the printed sheet at once.
+
+   Written as an escape rather than typed in: it is the same character, but the
+   literal one trips eslint no-irregular-whitespace and turned the pre-commit
+   `npm run lint` gate red. The test pinning code point 160 is what keeps the
+   escape honest. */
+export const fmt = (n) => `${Math.round(Number(n) || 0).toLocaleString('vi-VN')}\u00A0₫`;
 export const first = (name) => String(name || '').trim().split(/\s+/)[0] || '—';
 
 /* Photo helper — seeded so each place keeps the same image between renders.

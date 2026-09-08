@@ -47,15 +47,22 @@ chữ Caprasimo + Figtree) và dựng thêm một lớp giao diện lấy ý ni�
   tạo chuyến trống rồi thêm ngày, thêm điểm dừng, đặt ngày đi/ngày về ngay trong tab Lịch trình.
 - **Lịch trình theo ngày** — sắp xếp lại điểm dừng bằng nút **↑ ↓** (chạy trên cả cảm ứng
   và bàn phím) hoặc kéo-thả, đổi thứ tự cả ngày, và nút **Tối ưu tuyến đường**
-  (nearest-neighbour trên khoảng cách haversine thật). Mỗi điểm dừng giữ nguyên giờ của
-  chính nó khi đổi thứ tự, kèm **hoàn tác** một bước và gợi ý "sắp lại theo giờ" khi thứ
-  tự lệch khỏi giờ đã ghi. Mỗi ngày hiện quãng đường tính bằng km.
+  (nearest-neighbour trên **khoảng cách đường bộ** khi có khoá Goong, haversine khi không —
+  toast nói rõ vừa dùng cái nào, vì hai kết quả nhìn bằng mắt giống hệt nhau). Mỗi điểm
+  dừng giữ nguyên giờ của chính nó khi đổi thứ tự, kèm **hoàn tác** một bước và gợi ý
+  "sắp lại theo giờ" khi thứ tự lệch khỏi giờ đã ghi. Mỗi ngày hiện quãng đường tính bằng km.
 - **Tìm kiếm địa điểm** ngay trong ô tên điểm dừng — chọn một gợi ý là điểm dừng có toạ độ
   thật và lên bản đồ. Mặc định dùng Nominatim (OpenStreetMap), không cần đăng ký gì;
   điền `VITE_GOONG_API_KEY` để đổi sang Goong, sát với địa chỉ Việt Nam hơn.
-- **Bản đồ Leaflet + OpenStreetMap** phủ màu giấy ấm theo design system; ghim tròn đánh số,
-  tuyến đường nét đứt màu đất nung; tự fallback sang mirror / nền chấm khi tile không tải được.
-  Điểm dừng chưa có toạ độ được nói rõ là chưa hiện trên bản đồ.
+- **Bản đồ Leaflet** phủ màu giấy ấm theo design system; ghim tròn đánh số, tuyến đường màu
+  đất nung; tự fallback sang mirror / nền chấm khi tile không tải được. Điểm dừng chưa có
+  toạ độ được nói rõ là chưa hiện trên bản đồ.
+- **Bản đồ nền Goong** khi có `VITE_GOONG_MAPTILES_KEY` — vector tile qua MapLibre, biết tên
+  đường và tên quán ở Việt Nam kỹ hơn; khoá sai hoặc hết hạn thì tự quay về OpenStreetMap
+  chứ không để bản đồ trắng, và dòng ghi nguồn dưới bản đồ đổi theo cái đang thật sự vẽ.
+- **Đường đi thật giữa các điểm dừng** khi có `VITE_GOONG_API_KEY` — một lần gọi Goong
+  Direction cho cả ngày, vẽ liền nét theo đường bộ thay cho nét đứt chim bay, và hiện số km
+  đường bộ kèm thời gian đi ngay dưới tên ngày.
 - **Xuất PDF** — nút trên màn chi tiết mở hộp thoại In của trình duyệt với một bản riêng:
   **cả chuyến**, mọi ngày một lượt (màn hình chỉ hiện một ngày), kèm khoản chi và số dư.
 - **Ngân sách** — bảng khoản chi (thêm / sửa / xoá), ngân sách kế hoạch sửa được, thanh tiến độ,
@@ -147,8 +154,14 @@ document rác vào `days`/`expenses`.
 
 ### 4. Bật Firebase AI Logic (Trợ lý AI)
 
-**Build → AI Logic → Get started**, chọn backend **Gemini Developer API**. Firebase sẽ
-tự bật API và tạo khoá phía server — client không giữ khoá Gemini nào.
+**Build → AI Logic → Get started**, chọn backend **Vertex AI Gemini API** (trong tài liệu
+mới của Google nó tên là *Agent Platform*). Firebase sẽ tự bật API cần thiết trên project
+và ký request phía server — client không giữ khoá Gemini hay Google Cloud nào; request
+được cho qua nhờ App Check cộng với người dùng đang đăng nhập.
+
+Đây cũng là mặc định của app. Muốn đi đường **Gemini Developer API** cũ thì chọn nó ở màn
+này và đặt `VITE_FIREBASE_AI_BACKEND=google` trong `.env.local` — hai bên cùng SDK, cùng
+schema, cùng câu trả lời, chỉ khác API nào phải bật và có ghim vùng chạy hay không.
 
 #### Bật App Check (bắt buộc cho AI Logic)
 
@@ -194,6 +207,9 @@ App Check cho cả hai dịch vụ đó thì không phải sửa gì thêm. Khô
 không bật, mọi thứ khác vẫn chạy như cũ.
 
 Model mặc định là `gemini-3.5-flash`, đổi bằng `VITE_GEMINI_MODEL` trong `.env.local`.
+Vertex phục vụ model **theo vùng**, nên một model có thật vẫn có thể 404 ở vùng bạn ghim;
+lỗi hiện lên nói rõ cả tên model lẫn vùng đã thử. Bỏ trống `VITE_FIREBASE_AI_LOCATION` là
+dùng mặc định của SDK, và đó là lựa chọn đúng nếu bạn không có ràng buộc dữ liệu ở đâu.
 
 Trợ lý dùng **structured output**: schema JSON được gửi kèm request nên câu trả lời về
 đúng khuôn, không phải bóc tách chuỗi. Mọi thứ model trả về vẫn đi qua đúng bộ lọc
@@ -221,7 +237,50 @@ Dù dùng provider nào, kết quả trả về vẫn đi qua bộ đọc trong
 [`src/places.js`](src/places.js) trước khi vào dữ liệu chuyến đi: thiếu toạ độ, toạ độ
 ngoài quả đất, hay thiếu tên thì bị bỏ chứ không hiện thành một dòng chết.
 
-### 6. Deploy (tuỳ chọn)
+### 6. Bản đồ và đường đi bằng Goong (không bắt buộc)
+
+Goong cấp **hai khoá khác nhau** và chúng không thay nhau được. Điền cái nào thì được
+tính năng của cái đó; không điền cái nào thì app chạy đúng như trước.
+
+```
+VITE_GOONG_API_KEY=<khoá API>          # rsapi.goong.io
+VITE_GOONG_MAPTILES_KEY=<khoá Maptiles> # tiles.goong.io
+VITE_GOONG_MAP_STYLE=goong_light_v2     # tuỳ chọn
+```
+
+**Khoá API** mở ba thứ trên cùng một tài khoản: tìm địa điểm (mục 5 ở trên), **đường đi
+thật** giữa các điểm dừng trong ngày, và **khoảng cách đường bộ** cho nút *Tối ưu tuyến
+đường*. Một ngày là **một** lần gọi `Direction` cho cả dãy điểm dừng, và một lần
+`DistanceMatrix` mỗi lần bấm tối ưu — không phải mỗi cặp một request.
+
+Gói miễn phí của Goong là **1000 request/ngày** cho tất cả dịch vụ cộng lại và **5
+request/giây** trên một IP, chia chung cho cả nhóm cùng sửa một chuyến. Nên hai cơ chế
+này nằm sẵn trong code:
+
+- **Chờ 700 ms rồi mới hỏi.** Sắp xếp một ngày là một chuỗi thao tác tay, và mỗi bước ở
+  giữa là một thứ tự không ai cần đường cho nó. Đo thực tế: 6 thứ tự mới liên tiếp cách
+  nhau 200 ms chỉ tốn **1** request.
+- **Không hỏi lại câu đã hỏi.** Kết quả được nhớ theo toạ độ, nên chuyển qua lại giữa các
+  ngày không tốn gì thêm — 8 lần chuyển giữa 3 ngày tốn **3** request. Ma trận khoảng cách
+  được nhớ **không phân biệt thứ tự**, nên bấm *Tối ưu tuyến đường* lần thứ hai là miễn phí.
+
+Chỉ câu trả lời được nhớ, không nhớ lỗi: khoá bị 403 hôm nay có thể được duyệt ngày mai.
+
+**Khoá Maptiles** đổi nền bản đồ sang Goong. Style của Goong là **vector**, nên đường này
+nạp MapLibre bằng `import()` động và chỉ nạp khi có khoá: một build không có khoá không tải
+một byte nào của nó. Kiểu bản đồ chọn được trong `goong_light_v2` (mặc định),
+`goong_map_web`, `goong_map_dark`, `navigation_day`, `navigation_night`; gõ sai tên thì rơi
+về mặc định chứ không ra bản đồ trắng.
+
+Cả hai đường đều **hỏng êm**: khoá sai, hết hạn, hết quota hay mất mạng thì bản đồ quay về
+tile OpenStreetMap, đường nối các điểm dừng quay về nét đứt chim bay, và dòng ghi nguồn
+dưới bản đồ đổi theo cái đang thật sự được vẽ. Không có gì trong ứng dụng dừng lại vì
+thiếu Goong.
+
+Hai khoá này cũng đi trong URL từ trình duyệt nên đều **công khai** — giới hạn domain cho
+cả hai trong bảng điều khiển Goong.
+
+### 7. Deploy (tuỳ chọn)
 
 ```bash
 npm run build
@@ -272,6 +331,7 @@ src/
   budget.js            # tính tiền: số dư, tất toán gọn nhất, khoá "đã trả"
   itinerary.js         # haversine, tối ưu tuyến, thứ tự theo giờ, di chuyển một dòng
   places.js            # dựng URL và đọc kết quả của dịch vụ tìm địa điểm
+  maps.js              # style bản đồ Goong, polyline, ma trận đường bộ, khoá cache
   guide.js             # slug điểm đến + đoán nơi nào đáng có cẩm nang
   phrasebook.js        # khoá cache và sổ tay các câu đã dịch
   App.jsx              # nav + điều hướng màn hình
@@ -283,11 +343,13 @@ src/
     firestore.js       # repository chạy trên Firestore
     local.js           # repository chạy trên localStorage (chế độ thử)
     places.js          # gọi mạng cho tìm địa điểm (Nominatim hoặc Goong)
+    maps.js            # gọi mạng cho bản đồ nền, đường đi và ma trận khoảng cách (Goong)
     offline.js         # bản lưu của riêng máy: cẩm nang và sổ tay dịch
-    ai.js              # sinh lịch trình bằng Firebase AI Logic (hoặc mock)
+    ai.js              # gọi Gemini qua Firebase AI Logic — Vertex AI (hoặc mock)
     index.js           # chọn repository theo cấu hình
   components/          # ui.jsx (Seg, Avatar, En, icons), MapView, PlaceSearch,
-                       # TripPrintSheet, ExpenseDialog, ErrorBoundary, useFieldDraft
+                       # TripPrintSheet, ExpenseDialog, ErrorBoundary, useFieldDraft,
+                       # useRoadRoute
   screens/             # Login, Trips, Trip (+ trip/ItineraryTab|BudgetTab|MembersTab|GuideTab),
                        # AIDesk, Translate, Profile
 tests/
@@ -312,10 +374,11 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
 1. ~~Firebase Auth + Firestore + Security Rules~~ — xong, xem mục **Nối Firebase**.
 2. ~~Gemini cho Trợ lý AI~~ — xong, qua Firebase AI Logic.
 3. ~~Tìm kiếm địa điểm~~ — xong: Nominatim mặc định, Goong khi có khoá.
-4. **Directions API** (Google/Goong) thay cho khoảng cách đường chim bay hiện tại.
-   `optimizeRoute` trong [`src/itinerary.js`](src/itinerary.js) nhận một hàm `distance`
-   làm tham số, nên chỗ nối đã sẵn — cần một hàm trả khoảng cách đường bộ giữa hai điểm,
-   lấy sẵn toàn bộ trước khi gọi vì hàm này phải đồng bộ.
+4. ~~Directions API thay cho khoảng cách đường chim bay~~ — xong, qua Goong.
+   `optimizeRoute` trong [`src/itinerary.js`](src/itinerary.js) vẫn nhận hàm `distance`
+   làm tham số; [`src/backend/maps.js`](src/backend/maps.js) lấy sẵn cả ma trận bằng một
+   lần gọi `DistanceMatrix` rồi mới gọi, vì hàm đó phải đồng bộ. Không có khoá Goong thì
+   vẫn là haversine như cũ.
 5. ~~Xuất PDF~~ — xong.
 6. ~~Dịch cho người đi + cẩm nang bản địa~~ — xong, xem **Tính năng đã có**.
    Còn lại: i18n đầy đủ cho giao diện, app Flutter đồng bộ Firebase.
@@ -341,6 +404,12 @@ Nhờ vậy chế độ thử không phải là nhánh `if` rải khắp giao di
   listener cho mỗi chuyến. Vài chục chuyến thì ổn; trên mức đó phải đếm sẵn trên document
   chuyến đi, tức là đảo lại một quy tắc kiến trúc chứ không phải chỉnh nhẹ. Ở chế độ dev
   app tự cảnh báo khi vượt ngưỡng.
+- **Đường bộ chỉ có ở tab Lịch trình, không có trong bản in.** `TripPrintSheet` render
+  từ state đã có; kéo đường đi vào đó nghĩa là gọi Direction cho *mọi* ngày trước khi in.
+- **maplibre-gl là 1045 kB trong `dist/`** khi bật bản đồ Goong. Nó nằm chunk riêng và
+  trình duyệt chỉ tải khi có khoá Maptiles, nhưng nó vẫn là file to nhất dự án — và vì
+  `chunkSizeWarningLimit` chỉ có một ngưỡng chung, nâng nó lên cho maplibre cũng nới lỏng
+  cảnh báo cho `firebase-firestore`. Xem chú thích trong [`vite.config.js`](vite.config.js).
 - **`firebase-firestore` 567 kB vẫn nằm trong bundle kể cả ở chế độ thử**, vì
   `backend/firebase.js` import tĩnh `getFirestore`. Bỏ được nó thì phải chuyển import đó
   vào `backend/firestore.js` rồi nạp repository bằng dynamic import — xem chú thích trong

@@ -1,5 +1,5 @@
 import { SEED_TRIPS, newDay, newStop, uid } from '../data.js';
-import { AI_MODEL, firebaseEnabled } from './config.js';
+import { AI_MODEL, aiBackend, aiLocation, firebaseEnabled } from './config.js';
 import { ai } from './firebase.js';
 import { cleanGuide, cleanStop, cleanTranslation } from './schema.js';
 
@@ -115,8 +115,9 @@ async function askModel({ schema, prompt, temperature = 0.9, whenUnreadable }) {
   try {
     result = await model.generateContent(prompt);
   } catch (err) {
-    console.error('SmartTrip · Gemini:', err);
+    console.error(`SmartTrip · Gemini (${aiBackend}):`, err);
     const text = String(err?.message ?? '');
+    const vertex = aiBackend === 'vertex';
     /* The two failures a project owner actually hits, both fixed in the
        Console rather than in the app — say which one it is. */
     if (text.includes('App Check')) {
@@ -127,7 +128,19 @@ async function askModel({ schema, prompt, temperature = 0.9, whenUnreadable }) {
     }
     if (text.includes('403') || text.includes('PERMISSION_DENIED')) {
       throw new Error(
-        'Project chưa được phép gọi Gemini. Kiểm tra Firebase Console → AI Logic đã bật chưa.',
+        vertex
+          ? 'Project chưa được phép gọi Gemini qua Vertex AI. Firebase Console → AI Logic, chọn Vertex AI và bật API cho project.'
+          : 'Project chưa được phép gọi Gemini. Kiểm tra Firebase Console → AI Logic đã bật chưa.',
+        { cause: err },
+      );
+    }
+    /* Vertex serves models per region, so a model that exists can still be
+       404 in the location this build asked for. That reads as "model sai tên"
+       if we do not say which region was tried. */
+    if (vertex && (text.includes('404') || text.includes('NOT_FOUND'))) {
+      throw new Error(
+        `Vertex AI không có model "${AI_MODEL}"${aiLocation ? ` ở vùng ${aiLocation}` : ''}. `
+        + 'Đổi VITE_GEMINI_MODEL hoặc VITE_FIREBASE_AI_LOCATION rồi chạy lại.',
         { cause: err },
       );
     }

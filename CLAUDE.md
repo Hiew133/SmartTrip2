@@ -12,7 +12,7 @@ và "biết trước kẻo dẫm phải" thì ghi ở đây.
 npm run dev        # vite, cổng 5173
 npm run build      # build vào dist/
 npm run lint       # eslint — phải 0 lỗi trước khi commit
-npm test           # logic thuần — 86 ca, vài giây, không cần gì ngoài node
+npm test           # logic thuần — 110 ca, vài giây, không cần gì ngoài node
 npm run test:rules # kiểm thử Security Rules trên emulator — 44 ca
 ```
 
@@ -53,7 +53,7 @@ store, rồi mới gọi từ màn hình.
 
 ### Logic thuần nằm ngoài React, có chủ ý
 
-`budget.js`, `itinerary.js`, `places.js`, `guide.js`, `phrasebook.js` ở đầu `src/` không import React và không import
+`budget.js`, `itinerary.js`, `places.js`, `maps.js`, `guide.js`, `phrasebook.js` ở đầu `src/` không import React và không import
 backend. Lý do rất cụ thể: `store.jsx` có JSX nên `node --test` không nạp được, và
 `backend/config.js` đọc `import.meta.env` nên bất cứ thứ gì chạm vào nó cũng ngoài tầm
 với của Node trần. Muốn test một hàm mà không kéo theo cả một test runner cho trình duyệt
@@ -63,9 +63,12 @@ thì hàm đó phải nằm ở đây.
 (test được), `src/backend/places.js` gọi `fetch` và chọn provider (không test được).
 Thêm provider mới thì viết parser ở file đầu, kèm ca test bằng JSON mẫu.
 
+`src/maps.js` / `src/backend/maps.js` tách theo đúng cùng một đường, và vì cùng một lý do.
+
 `optimizeRoute(items, distance)` nhận hàm khoảng cách làm tham số — mặc định là haversine.
-Đó là chỗ nối sẵn cho Directions API sau này; hàm truyền vào **phải đồng bộ**, nên tuyến
-đường bộ phải lấy hết trước rồi mới gọi.
+Chỗ nối đó **đã dùng**: `roadDistance()` trong `backend/maps.js` lấy cả ma trận bằng một
+lần gọi `DistanceMatrix` rồi mới dựng hàm đồng bộ. Hàm truyền vào **phải đồng bộ**, nên
+mọi thứ cần mạng đều phải lấy xong trước khi gọi.
 
 ### Bản in là một component riêng, không phải CSS phủ lên màn hình
 
@@ -150,11 +153,14 @@ npx firebase apps:sdkconfig WEB 1:504236832610:web:cc79a407dac3a70261de3b
 | Firestore đọc/ghi | ✅ chạy thật, chuyến đi đọc từ cloud |
 | Security Rules | ✅ đã deploy, đã xác nhận chặn truy cập vô danh (403) |
 | Firebase AI Logic (Gemini) | ✅ chạy thật — sinh lịch trình có toạ độ, tạo được chuyến đi |
+| Backend cho Gemini | Vertex AI là mặc định (`VITE_FIREBASE_AI_BACKEND`); `google` để về đường cũ |
 | App Check (reCAPTCHA Enterprise) | ✅ đã enforce, debug token localhost đã đăng ký |
 | Test Security Rules | ✅ 44/44 pass trên emulator (quyền + shape dữ liệu ghi vào) |
-| Test logic thuần | ✅ 86/86 pass, `npm test`, không cần emulator |
+| Test logic thuần | ✅ 110/110 pass, `npm test`, không cần emulator |
 | CI | ✅ `.github/workflows/ci.yml` — lint + unit + build, rules ở job riêng có JDK 21 |
 | Tìm kiếm địa điểm | ✅ Nominatim mặc định (không cần khoá), Goong khi có `VITE_GOONG_API_KEY` |
+| Bản đồ nền Goong | ✅ vector tile qua MapLibre khi có `VITE_GOONG_MAPTILES_KEY`, tự rơi về OSM |
+| Đường đi & khoảng cách đường bộ | ✅ Goong Direction + DistanceMatrix khi có `VITE_GOONG_API_KEY` |
 | Xuất PDF | ✅ qua hộp thoại In của trình duyệt, bản in riêng gồm cả chuyến |
 | Nhận lời mời | ✅ tự nhận ghế khi đăng nhập (cần email đã xác minh) |
 | Gỡ / rời thành viên | ✅ chủ gỡ được người khác và huỷ được lời mời; người khác tự rời được |
@@ -264,12 +270,22 @@ chủ chuyến thêm lại được. Bịt hẳn thì phải đưa danh tính gh
   vào không thể bất đồng ý về "chuyển xuống" nghĩa là gì. Đừng gỡ nút đi mà chỉ sửa DnD.
 - Trong Browser pane lúc kiểm thử, `net::ERR_CONNECTION_REFUSED` là do môi trường chặn
   host ngoài (ảnh picsum, tile OpenStreetMap, Google Fonts) — không phải lỗi app.
-- `npm run lint` còn **5** cảnh báo `react-hooks/set-state-in-effect` có sẵn từ trước
-  (animation vào màn, toast, count-up). Đã để mức `warn` có chủ ý, không phải bỏ sót.
-- `npm run build` **sạch**. `chunkSizeWarningLimit` đã nâng lên 600 kèm lý do trong
-  `vite.config.js`: chunk to nhất là `firebase-firestore` 567 kB, là vendor, nằm chunk
-  riêng, chỉ đổi khi đổi SDK. Ngưỡng đặt sát ngay trên con số thật để nếu có gì mới làm
-  nó phình ra thì cảnh báo lại kêu.
+- `npm run lint` còn **5** cảnh báo có sẵn từ trước — `react-hooks/set-state-in-effect`
+  (animation vào màn, toast, count-up) để mức `warn` có chủ ý, cộng hai directive
+  `eslint-disable` thừa trong `firestore.js`. Không phải bỏ sót. **0 lỗi.**
+
+  Dấu cách trước `₫` trong `fmt()` giờ viết là `\u00A0` chứ không gõ thẳng: ký tự y hệt,
+  nhưng ký tự sống làm `no-irregular-whitespace` báo **error** và cổng lint đỏ. Ca test
+  ghim mã 160 là thứ giữ cho escape đó không bị "dọn" thành dấu cách thường.
+- `npm run build` **sạch**. `chunkSizeWarningLimit` nay là **1100** kèm lý do trong
+  `vite.config.js`: chunk to nhất giờ là `maplibre-gl` 1045 kB (bản đồ nền Goong), sau đó
+  là `firebase-firestore` 568 kB. Cả hai là vendor, nằm chunk riêng, chỉ đổi khi đổi SDK.
+  Ngưỡng vẫn đặt sát ngay trên con số thật để cái gì phình ra thì cảnh báo lại kêu —
+  nhưng vì chỉ có **một** ngưỡng chung, nâng nó cho maplibre cũng nới lỏng cảnh báo cho
+  firestore. 568 là con số để đối chiếu nếu chunk đó có ngày trông đáng ngờ.
+
+  `maplibre-gl` chỉ được `import()` khi có khoá Maptiles, nên build không khoá **không
+  bao giờ tải** file đó — nó nằm trong `dist/` mà không ai xin.
 
   Muốn bỏ hẳn 567 kB đó ở chế độ thử thì **lazy repository thôi là chưa đủ** —
   `backend/firebase.js` import tĩnh `getFirestore` để `db()` giữ được tính đồng bộ cho
@@ -434,6 +450,126 @@ Ba tính năng cùng gọi Gemini và cùng hỏng theo đúng hai kiểu (chưa
 chưa bật AI Logic), nên phần nạp SDK, dựng model, dịch lỗi sang tiếng Việt nằm trong một
 hàm. Mỗi bên gọi mang schema, prompt và `temperature` của mình — cẩm nang 0.6, bản dịch
 0.3, lịch trình vẫn 0.9. Vẫn nguyên luật cũ: **mọi object lồng trong schema phải viết
+`Schema.object({ properties: { … } })`**.
+
+## Goong: bản đồ nền, đường đi, và khoảng cách đường bộ
+
+Ba tính năng, hai khoá, và một quy tắc chung: **không cái nào được là điều kiện để app
+chạy**. Không khoá, khoá sai, hết quota, mất mạng — tất cả đều rơi về đúng hành vi cũ
+(tile OpenStreetMap, đường nét đứt chim bay) chứ không phải màn hình trắng hay exception.
+Vì thế `backend/maps.js` **trả `null` chứ không ném** cho mọi lỗi nó biết trước; chỉ
+`AbortError` được ném tiếp, vì đó là người dùng gõ tiếp chứ không phải hỏng.
+
+### Hai khoá, không thay nhau được
+
+Goong cấp `VITE_GOONG_API_KEY` cho `rsapi.goong.io` (geocode, Direction, DistanceMatrix)
+và `VITE_GOONG_MAPTILES_KEY` cho `tiles.goong.io` (bản đồ nền). Khoá này không mở được
+dịch vụ kia. Đọc thành **hai** setting là có chủ ý — nửa nào cấu hình được thì chạy nửa đó.
+
+Cả gateway của Goong **kiểm khoá trước khi định tuyến**, nên `403 API_KEY_INVALID` trả về
+giống hệt nhau cho endpoint có thật và endpoint bịa. Đừng dùng mã lỗi để đoán xem một
+endpoint có tồn tại hay không — đã thử, nó nói dối.
+
+### Bản đồ nền của Goong là **vector**, Leaflet không đọc được
+
+Style của Goong là `https://tiles.goong.io/assets/<tên>.json` cho MapLibre/Mapbox GL —
+**không có raster tile**, nên `L.tileLayer` không dùng được. Đường đi là
+`@maplibre/maplibre-gl-leaflet`: MapLibre vẽ nền trong một pane của Leaflet, còn toàn bộ
+ghim, popup và `fitBounds` vẫn là Leaflet như cũ. Đó là lý do chọn nó thay vì goong-js —
+đổi sang goong-js là viết lại cả `MapView`.
+
+Ba chi tiết bắt buộc:
+
+- **`maplibre-gl` phải nằm trong `optimizeDeps.include`** của `vite.config.js`, y hệt
+  `firebase/ai` và vì đúng cái bẫy đó: nó chỉ được `import()` động nên Vite không thấy
+  lúc quét, phát hiện muộn, tái tối ưu, đổi `browserHash`, và request đang bay thành 404.
+- **Dùng export có tên của plugin, đừng dùng `L.maplibreGL`.** Plugin chỉ gắn mình vào `L`
+  khi `Object.isExtensible(L)`, mà qua bundler thường là không.
+- **Chỉ rơi về OSM khi lỗi đến *trước* sự kiện `load`.** MapLibre bắn `error` cho cả một
+  tile lẻ hết giờ; gỡ cả nền vì một cái như thế còn tệ hơn chính cái trục trặc đó. Lỗi
+  trước `load` mới là "khoá sai / style không có".
+
+Đã dựng lại đúng cảnh khoá sai trong trình duyệt: style trả 403 → rơi về OSM → 12 tile OSM
+vẽ ra, đường nét đứt quay lại, không có lỗi nào lọt lên giao diện.
+
+### Dòng ghi nguồn phải theo cái đang vẽ, không theo cái đã cấu hình
+
+`MapView` gọi ngược `onBasemap('goong' | 'osm')` khi biết chắc, và `ItineraryTab` để
+figcaption chạy theo. Bản đầu tiên lấy thẳng từ config, và sau một lần rơi về OSM nó ghi
+"Bản đồ © Goong Maps" bên dưới một bản đồ OpenStreetMap — ghi sai nguồn là chuyện giấy
+phép, không chỉ là chữ nghĩa.
+
+### Quota là ràng buộc thiết kế, không phải chuyện vận hành
+
+Gói miễn phí của Goong: **1000 request/ngày cho tất cả dịch vụ cộng lại**, **5
+request/giây trên một IP**, và **$100 credit dùng một lần** (không phải hàng tháng). Cả
+nhóm cùng sửa một chuyến thì tiêu chung cái quota đó. Ba cơ chế dưới đây tồn tại vì con
+số 1000, đừng gỡ cái nào mà không thay bằng thứ khác.
+
+**Một ngày là một request, không phải một cặp một request.** `Direction` nhận `origin` là
+điểm đầu và `destination` là **cả phần còn lại nối bằng `;`**, trả `legs` theo đúng thứ tự
+đó cộng một `overview_polyline`. `DistanceMatrix` nhận `origins`/`destinations` nối bằng
+`|`. Vì vậy vẽ đường cả ngày tốn một lần gọi, và mỗi lần bấm *Tối ưu tuyến đường* tốn thêm
+một lần. `MAX_ROUTE_POINTS` chặn ở 12.
+
+**Khoá request là toạ độ, không phải `day.items`.** `routeKey()` / `matrixKey()` trong
+`src/maps.js` là thứ quyết định "cùng một câu hỏi" nghĩa là gì, nên chúng là hàm thuần có
+ca test riêng. Ngày bị ghi lại mỗi lần gõ một chữ trong ghi chú hay sửa một con số dự chi,
+mà không cái nào làm đường đi đổi.
+
+Hai khoá đó **cố tình khác nhau**: `routeKey` **có** phân biệt thứ tự vì đường vẽ đi theo
+danh sách; `matrixKey` **không**, vì ma trận chứa mọi cặp bất kể thứ tự. Nhờ vậy bấm *Tối
+ưu tuyến đường* lần thứ hai — ngay sau khi chính nó vừa xáo lại ngày — không tốn request
+nào. Thứ được cache là **hàm tra cứu đã dựng xong**, và nó khớp điểm dừng với dòng ma trận
+theo toạ độ chứ không theo chỉ số, nên vẫn đúng sau khi thứ tự đã đổi.
+
+**Debounce 700 ms trước khi hỏi** (`ROUTE_DEBOUNCE_MS`). Sắp xếp một ngày là một chuỗi
+thao tác tay, mỗi bước là một thứ tự không ai cần đường cho nó. Cùng lý do với
+`PLACE_DEBOUNCE_MS`, và với trần 5 request/giây thì nó còn là chống vượt tốc độ chứ không
+chỉ tiết kiệm.
+
+**Chỉ cache câu trả lời, không cache thất bại.** 403 hôm nay là cái khoá được duyệt ngày
+mai; nhớ nó lại thì phải tải lại trang mới thoát ra được.
+
+Đã đo trong trình duyệt bằng cách vá `window.fetch` trả về câu trả lời Goong giả:
+8 lần chuyển qua lại giữa 3 ngày → **3** request; 6 thứ tự mới liên tiếp cách nhau 200 ms →
+**1** request; bấm tối ưu hai lần → **1** request `DistanceMatrix`. Trước khi có hai cơ chế
+này thì lần lượt là 9, 6 và 2.
+
+### Tổng cộng dồn không đủ thì không hiện, chứ không hiện một nửa
+
+`parseDirection` trả `km`/`minutes` là `null` trừ khi **mọi** leg cộng được. Con số km
+dưới tên ngày tồn tại để người ta liếc qua và thấy tuyến đường có hợp lý không; một tổng
+thiếu vài chặng vẫn trông như một tổng.
+
+Cùng lý do, `parseDistanceMatrix` từ chối ma trận **sai kích thước** thay vì đoán dòng nào
+thiếu, và một ô Goong không trả lời được là `null` chứ không phải `0` — `0` mét là một câu
+trả lời thật (điểm đến chính nó).
+
+### Toast phải nói vừa đo bằng gì
+
+`optimizeRoute` chạy trên đường bộ hay chim bay cho ra hai thứ tự khác nhau mà **nhìn bằng
+mắt không phân biệt được**. Nên nút *Tối ưu tuyến đường* nói rõ trong toast: "theo đường
+bộ" hay "theo đường chim bay". Khi không có khoá Goong thì bỏ hẳn cụm đó — nói với người
+chưa cấu hình gì rằng họ đang dùng đường chim bay là tiếng ồn.
+
+## Gemini đi qua Vertex AI
+
+`getAI(app, { backend })` trong `backend/firebase.js` chọn backend theo
+`VITE_FIREBASE_AI_BACKEND`, **mặc định `vertex`**.
+
+Điều dễ dẫm phải: firebase 12.18 đã **deprecate `VertexAIBackend`** và đổi tên đường đó
+thành `AgentPlatformBackend` (Google đổi tên "Vertex AI Gemini API" thành "Agent
+Platform"). Hai lớp cùng tới Vertex nhưng **mặc định vùng khác nhau** — `global` cho lớp
+mới, `us-central1` cho lớp cũ. Code lấy `AgentPlatformBackend` trước, rơi về
+`VertexAIBackend` nếu SDK chưa có, nên nó chạy được cả với SDK cũ hơn lẫn SDK sau này bỏ
+hẳn lớp deprecated.
+
+Vertex phục vụ model **theo vùng**, nên một model có thật vẫn 404 được ở vùng đã ghim.
+`askModel` dịch riêng lỗi đó và nói ra cả tên model lẫn vùng, vì nếu không thì nó đọc y
+như "gõ sai tên model". Bỏ trống `VITE_FIREBASE_AI_LOCATION` là dùng mặc định của SDK.
+
+Vẫn nguyên luật cũ, không đổi theo backend: **mọi object lồng trong schema phải viết
 `Schema.object({ properties: { … } })`**.
 
 ## Những chỗ đã sập — đừng dẫm lại

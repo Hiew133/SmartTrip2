@@ -11,7 +11,11 @@ export default defineConfig({
      longer exists ("Failed to fetch dynamically imported module"). Naming it here
      pre-bundles it up front; the dynamic import still keeps it out of the
      production entry chunk. */
-  optimizeDeps: { include: ['firebase/ai'] },
+  /* MapLibre is here for exactly the same reason: components/MapView.jsx only
+     imports it dynamically, and only when a Goong Maptiles key is set, so it
+     is invisible to the startup scan and would be discovered the first time
+     somebody opens a trip on a configured build. */
+  optimizeDeps: { include: ['firebase/ai', 'maplibre-gl', '@maplibre/maplibre-gl-leaflet'] },
   build: {
     /* 567 kB is firebase-firestore, and it is vendor code in its own chunk:
        nothing in it can be split out, it changes only when the SDK version
@@ -22,10 +26,20 @@ export default defineConfig({
        that import into the repository and loading the repository with a
        dynamic import would drop the whole chunk in demo mode.
 
-       Until then the number is stated rather than warned about. The limit is
+       The bigger number now is maplibre-gl at 1045 kB, which draws Goong's
+       vector basemap. It is worth stating plainly what that buys and what it
+       costs: it is in its own async chunk, MapView only imports it when a
+       Goong Maptiles key is configured, and a build without one never asks
+       the browser for it — so for anyone on OpenStreetMap tiles it is a file
+       sitting in dist/ that is never fetched.
+
+       Until then the numbers are stated rather than warned about. The limit is
        set just above the real figure on purpose: if a chunk grows past this,
-       something new has landed and it is worth looking at again. */
-    chunkSizeWarningLimit: 600,
+       something new has landed and it is worth looking at again. Raising it
+       for maplibre does loosen the tripwire on firestore, which is the honest
+       cost of one global threshold — 568 kB is the number to compare against
+       if that chunk ever looks suspicious. */
+    chunkSizeWarningLimit: 1100,
     rollupOptions: {
       output: {
         /* Firebase and Leaflet change far less often than the app itself, so
